@@ -11,7 +11,3 @@ services:
         value: production
       - key: PORT
         value: "3001"
-      - key: WWEBJS_DATA_PATH
-        value: /tmp/.wwebjs_auth
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/chromium

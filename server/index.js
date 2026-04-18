@@ -1,26 +1,40 @@
-import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import pkg from 'whatsapp-web.js';
-import qrcode from 'qrcode';
+import express from 'express';
 import OpenAI from 'openai';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const { Client, LocalAuth } = pkg;
 
 dotenv.config();
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const app = express();
+app.use(cors());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '4mb' }));
+
+const PORT = Number.parseInt(process.env.PORT || '3001', 10);
+
+const {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY,
+  OPENAI_API_KEY,
+  OPENAI_MODEL = 'gpt-4o-mini',
+  ELEVENLABS_API_KEY,
+  ELEVENLABS_MODEL_ID = 'eleven_flash_v2_5',
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  PUBLIC_API_BASE_URL,
+  ADMIN_APPROVAL_KEY,
+  ALLOW_SIMULATED_PROVISIONING = 'true'
+} = process.env;
+
+const twilioClient =
+  TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) : null;
+const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 function buildSupabaseClient(apiKey, accessToken = null) {
+  if (!SUPABASE_URL || !apiKey) return null;
   return createClient(SUPABASE_URL, apiKey, {
     auth: { persistSession: false },
     global: accessToken
@@ -34,147 +48,136 @@ function buildSupabaseClient(apiKey, accessToken = null) {
 }
 
 const supabaseAuth = buildSupabaseClient(SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY);
-const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
-  ? buildSupabaseClient(SUPABASE_SERVICE_ROLE_KEY)
-  : null;
+const supabaseAdmin = buildSupabaseClient(SUPABASE_SERVICE_ROLE_KEY);
+const allowSimulatedProvisioning = String(ALLOW_SIMULATED_PROVISIONING).toLowerCase() !== 'false';
 
-const app = express();
-app.use(cors());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+const VOICE_OPTIONS = [
+  {
+    key: 'jessica_nl',
+    name: 'Jessica (Female)',
+    provider: 'elevenlabs',
+    externalVoiceId: 'cgSgspJ2msm6clMCkdW9',
+    previewUrl:
+      'https://storage.googleapis.com/eleven-public-prod/premade/voices/cgSgspJ2msm6clMCkdW9/56a97bf8-b69b-448f-846c-c3a11683d45a.mp3',
+    twilioVoice: 'alice'
+  },
+  {
+    key: 'eric_nl',
+    name: 'Eric (Male)',
+    provider: 'elevenlabs',
+    externalVoiceId: 'cjVigY5qzO86Huf0OWal',
+    previewUrl:
+      'https://storage.googleapis.com/eleven-public-prod/premade/voices/cjVigY5qzO86Huf0OWal/d098fda0-6456-4030-b3d8-63aa048c9070.mp3',
+    twilioVoice: 'alice'
+  },
+  {
+    key: 'lotte_nl',
+    name: 'Lotte (Professional)',
+    provider: 'elevenlabs',
+    externalVoiceId: 'EXAVITQu4vr4xnSDxMaL',
+    previewUrl:
+      'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/5f713f17-8f41-4f5b-a0f2-ea0b2f9be8f5.mp3',
+    twilioVoice: 'alice'
+  }
+];
 
-process.on('unhandledRejection', (reason) => {
-  console.error('❌ Unhandled promise rejection:', reason);
-});
+const DEFAULT_NUMBERS = [
+  { e164: '+31208081234', label: 'Amsterdam, NL', countryCode: 'NL', source: 'catalog' },
+  { e164: '+31103456789', label: 'Rotterdam, NL', countryCode: 'NL', source: 'catalog' },
+  { e164: '+31859990000', label: 'National, NL', countryCode: 'NL', source: 'catalog' }
+];
 
-process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught exception:', error);
-});
-
-const PORT = process.env.PORT || 3001;
-const WWEBJS_DATA_PATH = process.env.WWEBJS_DATA_PATH
-  ? path.resolve(process.env.WWEBJS_DATA_PATH)
-  : path.join(__dirname, '.wwebjs_auth');
-const LEGACY_WWEBJS_SESSION_DIR = path.join(WWEBJS_DATA_PATH, 'session');
-const MAX_CHAT_HISTORY = 20;
-
-const DEFAULT_AI_SETTINGS = {
-  targetAudience: 'all',
-  knowledge: 'Wij zijn een behulpzaam bedrijf.',
-  calendarConnected: false
+const PLAN_CATALOG = {
+  plan_150: {
+    key: 'plan_150',
+    name: 'Starter',
+    monthlyPriceEur: 150,
+    includedMinutes: 200,
+    includedTasks: 250
+  },
+  plan_275: {
+    key: 'plan_275',
+    name: 'Growth',
+    monthlyPriceEur: 275,
+    includedMinutes: 450,
+    includedTasks: 600
+  },
+  plan_500: {
+    key: 'plan_500',
+    name: 'Pro',
+    monthlyPriceEur: 500,
+    includedMinutes: 950,
+    includedTasks: 1400
+  },
+  plan_850: {
+    key: 'plan_850',
+    name: 'Scale',
+    monthlyPriceEur: 850,
+    includedMinutes: 1900,
+    includedTasks: 3200
+  }
 };
 
-const WA_CONNECTIONS_TABLE = 'wa_connections';
-const WA_CHATS_TABLE = 'wa_chats';
-const WA_MESSAGES_TABLE = 'wa_messages';
-const dbSyncWarningsShown = new Set();
-const CHATS_CACHE_TTL_MS = 7000;
+const DEFAULT_PLAN = PLAN_CATALOG.plan_150;
 
-if (!SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn(
-    '⚠️ SUPABASE_SERVICE_ROLE_KEY ontbreekt; DB sync draait via user token tijdens requests. Voor background WhatsApp sync (zonder open dashboard) voeg SERVICE_ROLE toe.'
-  );
+function nowIso() {
+  return new Date().toISOString();
 }
 
-const SYSTEM_PROMPT = `Je bent een proactieve AI Executive Assistant. Je bent geïntegreerd in de smartphone van de gebruiker (WhatsApp, Gmail, Apple/Google Calendar).
-Als de gebruiker je vraagt om een bericht te sturen (bijv. naar Willem over 10:00 uur), schrijf dan een vloeiende, beleefde, menselijke tekst en reageer in deze vorm:
-
-"✅ WhatsApp bericht succesvol verstuurd naar Willem:
-_[Het bericht dat je hebt geschreven]_"
-
-Als ze vragen om een meeting te plannen, doe alsof je in hun agenda hebt gekeken en plan het in.
-Gedraag je alsof je daadwerkelijk toegang hebt tot hun contacten en acties kunt uitvoeren. Spreek Nederlands.`;
-
-const WA_BOT_PROMPT = `Je bent de persoonlijke AI Assistent van de gebruiker. Je reageert momenteel DIRECT via WhatsApp.
-Je praat nu rechtstreeks met de gebruiker via hun eigen WhatsApp account, of je beantwoordt vragen van hun klanten.
-Jouw antwoord wordt automatisch direct teruggestuurd naar de persoon met wie je chat.
-Je hoeft NIET te zeggen "stuur dit bericht naar...". Je praat direct met de persoon. Geef direct het antwoord of de reactie die nodig is.
-Houd antwoorden kort, menselijk en direct zoals een echt WhatsApp gesprek.
-Gebruik emoji's waar gepast. Spreek Nederlands tenzij iemand je in een andere taal schrijft.
-Wees behulpzaam, warm en professioneel.`;
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-const userStates = new Map();
-
-app.get('/api/health', (_req, res) => {
-  res.json({
-    ok: true,
-    uptimeSec: Math.round(process.uptime()),
-    timestamp: new Date().toISOString()
-  });
-});
-
-function parsePositiveInt(value, defaultValue, maxValue) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return defaultValue;
-  return Math.min(parsed, maxValue);
+function normalizePlanKey(value) {
+  if (!value) return DEFAULT_PLAN.key;
+  const key = String(value).trim().toLowerCase();
+  return PLAN_CATALOG[key] ? key : DEFAULT_PLAN.key;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function getPlanConfig(planKey) {
+  return PLAN_CATALOG[normalizePlanKey(planKey)] || DEFAULT_PLAN;
 }
 
-function getErrorMessage(error) {
-  return error?.message || String(error || '');
+function normalizePhoneNumber(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const withPlus = raw.startsWith('+') ? raw : `+${raw}`;
+  return withPlus.replace(/(?!^)\+/g, '').replace(/[^+\d]/g, '');
 }
 
-function isTransientContextError(error) {
-  const message = getErrorMessage(error).toLowerCase();
-  return (
-    message.includes('execution context was destroyed') ||
-    message.includes('cannot find context with specified id') ||
-    message.includes('target closed') ||
-    message.includes('session closed') ||
-    message.includes('protocol error')
-  );
-}
-
-async function withTransientRetry(task, { retries = 3, baseDelayMs = 350, label = 'task' } = {}) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= retries; attempt += 1) {
-    try {
-      return await task();
-    } catch (error) {
-      lastError = error;
-      if (!isTransientContextError(error) || attempt >= retries) {
-        throw error;
-      }
-      const waitMs = baseDelayMs * attempt;
-      console.warn(
-        `⚠️ Tijdelijke WhatsApp context-fout bij ${label} (poging ${attempt}/${retries}):`,
-        getErrorMessage(error)
-      );
-      await sleep(waitMs);
-    }
+function normalizeArray(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean)
+      .slice(0, 100);
   }
-  throw lastError;
+
+  if (typeof value === 'string') {
+    return value
+      .split(/[\n,]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .slice(0, 100);
+  }
+
+  return [];
 }
 
-function sanitizeClientId(userId) {
-  return String(userId || 'anonymous').replace(/[^A-Za-z0-9_-]/g, '_');
+function safeText(value, fallback = '') {
+  const text = String(value ?? '').trim();
+  return text || fallback;
 }
 
-function sessionDirForClientId(clientId) {
-  return path.join(WWEBJS_DATA_PATH, `session-${clientId}`);
+function isMissingTableError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === '42P01' || message.includes('does not exist') || message.includes('schema cache');
 }
 
-function normalizeAiSettingsRow(row = {}) {
-  return {
-    targetAudience:
-      row.targetAudience ??
-      row.target_audience ??
-      row.targetaudience ??
-      DEFAULT_AI_SETTINGS.targetAudience,
-    knowledge: row.knowledge ?? DEFAULT_AI_SETTINGS.knowledge,
-    calendarConnected:
-      row.calendarConnected ??
-      row.calendar_connected ??
-      row.calendarconnected ??
-      DEFAULT_AI_SETTINGS.calendarConnected
-  };
+function migrationError() {
+  return 'Database schema ontbreekt. Run server/sql/call_assistant_migration.sql in Supabase SQL Editor.';
+}
+
+function assertSupabaseReady() {
+  if (!supabaseAuth) {
+    throw new Error('Supabase configuratie ontbreekt op de server. Zet SUPABASE_URL en key env vars.');
+  }
 }
 
 function getDbClient(accessToken = null) {
@@ -185,325 +188,42 @@ function getDbClient(accessToken = null) {
   return supabaseAuth;
 }
 
-function getStateDbClient(state) {
-  if (supabaseAdmin) return supabaseAdmin;
-  if (state?.lastAccessToken) return getDbClient(state.lastAccessToken);
-  return null;
+function getServiceClient() {
+  return supabaseAdmin || supabaseAuth;
 }
 
-function warnDbSyncOnce(key, error) {
-  if (dbSyncWarningsShown.has(key)) return;
-  dbSyncWarningsShown.add(key);
-  console.warn(`⚠️ DB sync waarschuwing (${key}):`, getErrorMessage(error));
+function getBaseUrl(req) {
+  const configured = String(PUBLIC_API_BASE_URL || '').trim().replace(/\/$/, '');
+  if (configured) return configured;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  return `${proto}://${req.get('host')}`;
 }
 
-function mergeMessagesIntoCache(state, chatId, messages) {
-  if (!Array.isArray(messages) || messages.length === 0) return;
-
-  const previous = state.messagesCache.get(chatId) || [];
-  const byId = new Map(previous.map((msg) => [msg.id, msg]));
-  for (const msg of messages) {
-    if (!msg?.id) continue;
-    byId.set(msg.id, msg);
-  }
-
-  const merged = Array.from(byId.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-  const trimmed = merged.length > 5000 ? merged.slice(merged.length - 5000) : merged;
-  state.messagesCache.set(chatId, trimmed);
-}
-
-async function persistWhatsappConnectionSnapshot(state, dbClient, { force = false } = {}) {
-  try {
-    const client = dbClient || getStateDbClient(state);
-    if (!client) return;
-
-    const nowMs = Date.now();
-    const nowIso = new Date().toISOString();
-    const signature = `${Boolean(state.isConnected)}|${state.client?.info?.wid?._serialized || ''}|${
-      state.lastInitError || ''
-    }`;
-
-    if (!force) {
-      const sameSignature = state.lastConnectionPersistSignature === signature;
-      const justPersisted = nowMs - (state.lastConnectionPersistAt || 0) < 15000;
-      if (sameSignature && justPersisted) return;
-    }
-
-    const payload = {
-      user_id: state.userId,
-      client_id: state.clientId,
-      connected: Boolean(state.isConnected),
-      my_number: state.client?.info?.wid?._serialized || null,
-      last_error: state.lastInitError || null,
-      last_seen_at: nowIso,
-      updated_at: nowIso
-    };
-
-    if (state.isConnected) {
-      payload.last_connected_at = nowIso;
-    }
-
-    const { error } = await client
-      .from(WA_CONNECTIONS_TABLE)
-      .upsert(payload, { onConflict: 'user_id' });
-
-    if (error) throw error;
-    state.lastConnectionPersistAt = nowMs;
-    state.lastConnectionPersistSignature = signature;
-  } catch (error) {
-    warnDbSyncOnce('wa_connections', error);
+function route(method, path, ...handlers) {
+  app[method](path, ...handlers);
+  if (path.startsWith('/api/')) {
+    app[method](`/functions/v1/${path.slice(5)}`, ...handlers);
   }
 }
 
-async function persistChatsForUser(dbClient, userId, chats = []) {
-  if (!Array.isArray(chats) || chats.length === 0) return;
-
-  try {
-    const nowIso = new Date().toISOString();
-    const rows = chats
-      .filter((chat) => chat?.id)
-      .map((chat) => ({
-        user_id: userId,
-        chat_id: chat.id,
-        name: chat.name || null,
-        phone_number: chat.phoneNumber || null,
-        avatar: chat.avatar || null,
-        is_group: Boolean(chat.isGroup),
-        unread_count: Number.parseInt(chat.unreadCount, 10) || 0,
-        timestamp: Number.parseInt(chat.timestamp, 10) || 0,
-        updated_at: nowIso
-      }));
-
-    if (rows.length === 0) return;
-
-    const { error } = await dbClient
-      .from(WA_CHATS_TABLE)
-      .upsert(rows, { onConflict: 'user_id,chat_id' });
-
-    if (error) throw error;
-  } catch (error) {
-    warnDbSyncOnce('wa_chats_write', error);
+function sendDbError(res, error) {
+  if (isMissingTableError(error)) {
+    return res.status(500).json({ error: migrationError() });
   }
-}
-
-async function readCachedChatsForUser(dbClient, userId, limit = 2000) {
-  try {
-    let query = dbClient
-      .from(WA_CHATS_TABLE)
-      .select('chat_id,name,phone_number,avatar,is_group,unread_count,timestamp')
-      .eq('user_id', userId)
-      .order('timestamp', { ascending: false });
-
-    if (Number.isFinite(limit) && limit > 0) {
-      query = query.limit(limit);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    return (data || []).map((row) => ({
-      id: row.chat_id,
-      name: row.name || row.phone_number || 'Onbekend contact',
-      unreadCount: row.unread_count || 0,
-      timestamp: row.timestamp || 0,
-      isGroup: Boolean(row.is_group),
-      avatar: row.avatar || null,
-      phoneNumber: row.phone_number || null
-    }));
-  } catch (error) {
-    warnDbSyncOnce('wa_chats_read', error);
-    return [];
-  }
-}
-
-async function persistMessagesForUser(dbClient, userId, chatId, messages = []) {
-  if (!Array.isArray(messages) || messages.length === 0) return;
-
-  try {
-    const nowIso = new Date().toISOString();
-    const rows = messages
-      .filter((msg) => msg?.id)
-      .map((msg) => ({
-        user_id: userId,
-        chat_id: chatId,
-        message_id: msg.id,
-        body: msg.body || '',
-        from_me: Boolean(msg.fromMe),
-        timestamp: Number.parseInt(msg.timestamp, 10) || 0,
-        type: msg.type || 'chat',
-        author: msg.author || null,
-        updated_at: nowIso
-      }));
-
-    if (rows.length === 0) return;
-
-    const { error } = await dbClient
-      .from(WA_MESSAGES_TABLE)
-      .upsert(rows, { onConflict: 'user_id,chat_id,message_id' });
-
-    if (error) throw error;
-  } catch (error) {
-    warnDbSyncOnce('wa_messages_write', error);
-  }
-}
-
-async function readCachedMessagesForUser(dbClient, userId, chatId, limit = 1200) {
-  try {
-    let query = dbClient
-      .from(WA_MESSAGES_TABLE)
-      .select('message_id,body,from_me,timestamp,type,author')
-      .eq('user_id', userId)
-      .eq('chat_id', chatId)
-      .order('timestamp', { ascending: false });
-
-    if (Number.isFinite(limit) && limit > 0) {
-      query = query.limit(limit);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    return (data || [])
-      .map((row) => ({
-        id: row.message_id,
-        body: row.body || '',
-        fromMe: Boolean(row.from_me),
-        timestamp: row.timestamp || 0,
-        type: row.type || 'chat',
-        author: row.author || null
-      }))
-      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-  } catch (error) {
-    warnDbSyncOnce('wa_messages_read', error);
-    return [];
-  }
-}
-
-async function readAiSettingsForUser(dbClient, userId) {
-  const defaults = { ...DEFAULT_AI_SETTINGS };
-
-  // Nieuwe aanbevolen schema: user_id PK + snake_case kolommen
-  try {
-    const { data, error } = await dbClient
-      .from('ai_settings')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!error && data) {
-      return normalizeAiSettingsRow(data);
-    }
-
-    if (!error && !data) {
-      const { error: insertError } = await dbClient
-        .from('ai_settings')
-        .upsert(
-          {
-            user_id: userId,
-            target_audience: defaults.targetAudience,
-            knowledge: defaults.knowledge,
-            calendar_connected: defaults.calendarConnected,
-            updated_at: new Date().toISOString()
-          },
-          { onConflict: 'user_id' }
-        );
-
-      if (!insertError) return defaults;
-    }
-  } catch (error) {
-    console.warn('⚠️ User settings schema fallback actief:', error.message);
-  }
-
-  // Legacy fallback: globale id=1 rij met niet-standaard kolomnamen
-  try {
-    const { data, error } = await dbClient
-      .from('ai_settings')
-      .select('*')
-      .eq('id', 1)
-      .maybeSingle();
-
-    if (!error && data) {
-      return normalizeAiSettingsRow(data);
-    }
-  } catch (error) {
-    console.warn('⚠️ Legacy ai_settings fallback faalde:', error.message);
-  }
-
-  return defaults;
-}
-
-async function saveAiSettingsForUser(dbClient, userId, payload = {}) {
-  const merged = {
-    ...DEFAULT_AI_SETTINGS,
-    ...normalizeAiSettingsRow(payload)
-  };
-
-  // Probeer nieuw per-user schema eerst
-  try {
-    const { error } = await dbClient
-      .from('ai_settings')
-      .upsert(
-        {
-          user_id: userId,
-          target_audience: merged.targetAudience,
-          knowledge: merged.knowledge,
-          calendar_connected: merged.calendarConnected,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: 'user_id' }
-      );
-
-    if (!error) return merged;
-  } catch (error) {
-    console.warn('⚠️ Save user_id schema fallback:', error.message);
-  }
-
-  // Fallback 1: legacy lowercase kolommen
-  try {
-    const { error } = await dbClient
-      .from('ai_settings')
-      .upsert({
-        id: 1,
-        targetaudience: merged.targetAudience,
-        knowledge: merged.knowledge,
-        calendarconnected: merged.calendarConnected,
-        updated_at: new Date().toISOString()
-      });
-
-    if (!error) return merged;
-  } catch (error) {
-    console.warn('⚠️ Save legacy lowercase fallback:', error.message);
-  }
-
-  // Fallback 2: snake_case globale kolommen
-  try {
-    const { error } = await dbClient
-      .from('ai_settings')
-      .upsert({
-        id: 1,
-        target_audience: merged.targetAudience,
-        knowledge: merged.knowledge,
-        calendar_connected: merged.calendarConnected,
-        updated_at: new Date().toISOString()
-      });
-
-    if (!error) return merged;
-  } catch (error) {
-    console.warn('⚠️ Save legacy snake_case fallback:', error.message);
-  }
-
-  return merged;
+  return res.status(500).json({ error: error?.message || 'Database fout.' });
 }
 
 async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-  if (!token) {
-    return res.status(401).json({ error: 'Niet ingelogd (token ontbreekt).' });
-  }
-
   try {
+    assertSupabaseReady();
+
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (!token) {
+      return res.status(401).json({ error: 'Niet ingelogd (token ontbreekt).' });
+    }
+
     const { data, error } = await supabaseAuth.auth.getUser(token);
     if (error || !data?.user) {
       return res.status(401).json({ error: 'Ongeldige of verlopen sessie.' });
@@ -513,906 +233,1396 @@ async function requireAuth(req, res, next) {
     req.accessToken = token;
     return next();
   } catch (error) {
-    return res.status(401).json({ error: 'Authenticatie mislukt.' });
+    return res.status(401).json({ error: error?.message || 'Authenticatie mislukt.' });
   }
 }
 
-function cleanupSessionArtifacts(sessionDir) {
-  const lockArtifacts = [
-    'SingletonLock',
-    'SingletonSocket',
-    'SingletonCookie',
-    'DevToolsActivePort',
-    'RunningChromeVersion'
-  ];
-
-  for (const file of lockArtifacts) {
-    try {
-      fs.rmSync(path.join(sessionDir, file), { force: true, recursive: true });
-      console.log(`🧹 Opgeruimd (${path.basename(sessionDir)}): ${file}`);
-    } catch {
-      // negeer
-    }
-  }
+function isAdminRequest(req) {
+  const providedKey = String(req.headers['x-admin-key'] || '').trim();
+  const expectedKey = String(ADMIN_APPROVAL_KEY || '').trim();
+  return Boolean(expectedKey && providedKey && providedKey === expectedKey);
 }
 
-function killStaleWhatsappBrowserProcessesForSession(sessionDir) {
-  try {
-    const output = execSync('ps -axo pid=,command=', { encoding: 'utf8' });
-    const lines = output.split('\n');
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (!trimmed.includes(sessionDir)) continue;
-      if (!trimmed.toLowerCase().includes('chrome')) continue;
-
-      const pidToken = trimmed.split(/\s+/, 1)[0];
-      const pid = Number.parseInt(pidToken, 10);
-      if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) continue;
-
-      try {
-        process.kill(pid, 'SIGKILL');
-        console.log(`🧹 Gestopte stale browser process (${path.basename(sessionDir)}): ${pid}`);
-      } catch {
-        // negeer
-      }
-    }
-  } catch (error) {
-    console.warn('⚠️ Kon stale browser processen niet inspecteren:', error.message);
-  }
+function requireAdmin(req, res, next) {
+  if (isAdminRequest(req)) return next();
+  return res.status(401).json({ error: 'Admin key ontbreekt of is ongeldig.' });
 }
 
-function createWhatsappClient(clientId) {
-  return new Client({
-    authStrategy: new LocalAuth({ clientId, dataPath: WWEBJS_DATA_PATH }),
-    puppeteer: {
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
-  });
+function onboardingFromPayload(payload = {}) {
+  return {
+    companyName: safeText(payload.companyName, 'Mijn Bedrijf'),
+    businessType: safeText(payload.businessType),
+    services: normalizeArray(payload.services),
+    pricing: safeText(payload.pricing),
+    openingHours: safeText(payload.openingHours),
+    toneOfVoice: safeText(payload.toneOfVoice, 'professioneel en vriendelijk'),
+    goals: safeText(payload.goals),
+    greeting: safeText(payload.greeting),
+    knowledge: safeText(payload.knowledge),
+    voiceKey: safeText(payload.voiceKey, VOICE_OPTIONS[0].key),
+    numberE164: normalizePhoneNumber(payload.numberE164 || payload.phoneNumber),
+    numberLabel: safeText(payload.numberLabel),
+    planKey: normalizePlanKey(payload.planKey)
+  };
 }
 
-async function safeReply(msg, text, contextLabel = 'reply') {
-  try {
-    await msg.reply(text);
-  } catch (error) {
-    console.error(`❌ Kon ${contextLabel} niet versturen:`, error.message);
-  }
+function getVoiceOption(voiceKey) {
+  return VOICE_OPTIONS.find((voice) => voice.key === voiceKey) || VOICE_OPTIONS[0];
 }
 
-async function fetchMessagesWithFallback(chat, requestedLimit) {
-  const candidateLimits = [
-    requestedLimit,
-    Math.min(requestedLimit, 1500),
-    Math.min(requestedLimit, 800),
-    Math.min(requestedLimit, 300)
-  ].filter((value, index, arr) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index);
+function buildAssistantPrompt({ profile = {}, assistant = {}, voice = {}, number = {} }) {
+  const services = Array.isArray(profile.services) ? profile.services : [];
+  const servicesText = services.length > 0 ? services.join(', ') : 'niet gespecificeerd';
+  const openingHours = profile.opening_hours || profile.openingHours || 'onbekend';
+  const pricing = profile.pricing || 'niet ingevuld';
+  const goals = profile.goals || 'beantwoord vragen en help met opvolging';
+  const tone = profile.tone_of_voice || profile.toneOfVoice || 'vriendelijk en duidelijk';
+  const company = profile.company_name || assistant.display_name || 'dit bedrijf';
+  const selectedNumber = number.e164 || 'nog niet live';
 
-  let lastError = null;
-  for (const limit of candidateLimits) {
-    try {
-      const fetched = await chat.fetchMessages({ limit });
-      if (Array.isArray(fetched)) return fetched;
-    } catch (error) {
-      lastError = error;
-      console.warn(`⚠️ fetchMessages poging met limit=${limit} faalde:`, error.message);
-    }
-  }
-
-  if (lastError) throw lastError;
-  return [];
+  return [
+    'Je bent een Nederlandse AI telefoon-assistent voor inkomende klantgesprekken.',
+    `Bedrijf: ${company}`,
+    `Diensten: ${servicesText}`,
+    `Prijzen: ${pricing}`,
+    `Openingstijden: ${openingHours}`,
+    `Doel van gesprek: ${goals}`,
+    `Tone of voice: ${tone}`,
+    `Gekozen stem: ${voice.display_name || 'standaard stem'}`,
+    `Gekozen nummer: ${selectedNumber}`,
+    'Regels:',
+    '- Geef korte, natuurlijke antwoorden.',
+    '- Stel 1 vervolgvraag als informatie ontbreekt.',
+    '- Bevestig belangrijke details hardop (naam, datum, tijd).',
+    '- Als iets onbekend is, zeg dat eerlijk en bied een terugbelnotitie aan.',
+    '- Spreek standaard Nederlands, tenzij de beller duidelijk een andere taal gebruikt.'
+  ].join('\n');
 }
 
-async function maybeTriggerHistorySync(state, chatId, { force = false } = {}) {
-  const now = Date.now();
-  const previous = state.historySyncRequestedAt.get(chatId) || 0;
-  if (!force && now - previous < 60000) {
-    return false;
+function fallbackAssistantReply(input, companyName) {
+  if (!input) {
+    return `Goedemiddag, je spreekt met de digitale assistent van ${companyName}. Waar kan ik je mee helpen?`;
   }
 
-  state.historySyncRequestedAt.set(chatId, now);
-  try {
-    const triggered = await state.client.syncHistory(chatId);
-    if (triggered) {
-      console.log(`📚 History sync aangevraagd voor user=${state.userId} chat=${chatId}`);
-    }
-    return triggered;
-  } catch (error) {
-    console.warn(`⚠️ History sync mislukt user=${state.userId} chat=${chatId}:`, error.message);
-    return false;
-  }
+  return `Dank voor je vraag. Ik help je graag verder. Kun je iets meer details geven zodat ik direct de juiste info voor ${companyName} kan geven?`;
 }
 
-function getHistory(state, chatId) {
-  if (!state.chatHistories.has(chatId)) {
-    state.chatHistories.set(chatId, []);
-  }
-  return state.chatHistories.get(chatId);
-}
+async function ensureAssistant(dbClient, userId) {
+  const { data, error } = await dbClient.from('assistants').select('*').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  if (data) return data;
 
-async function ensureUserSettingsLoaded(state, { force = false, accessToken = null } = {}) {
-  if (!state.settingsLoaded || force) {
-    const dbClient = getDbClient(accessToken || state.lastAccessToken || null);
-    state.settings = await readAiSettingsForUser(dbClient, state.userId);
-    state.settingsLoaded = true;
-  }
-  return state.settings;
-}
-
-function attachWhatsappHandlers(state) {
-  const { client } = state;
-
-  client.on('qr', async (qr) => {
-    console.log(`📱 QR ontvangen voor user ${state.userId}`);
-    try {
-      state.qrCodeData = await qrcode.toDataURL(qr);
-      state.isConnected = false;
-      state.isAuthenticated = false;
-      state.lastInitError = null;
-      await persistWhatsappConnectionSnapshot(state, null, { force: true });
-    } catch (error) {
-      console.error('Fout bij QR generatie:', error.message);
-    }
-  });
-
-  client.on('authenticated', async () => {
-    console.log(`🔐 WhatsApp authenticated voor user ${state.userId}`);
-    state.isAuthenticated = true;
-    state.lastInitError = null;
-    state.qrCodeData = null;
-    await persistWhatsappConnectionSnapshot(state, null, { force: true });
-  });
-
-  client.on('ready', async () => {
-    console.log(`✅ WhatsApp verbonden voor user ${state.userId}`);
-    state.isConnected = true;
-    state.isAuthenticated = true;
-    state.qrCodeData = null;
-    state.lastInitError = null;
-    state.transientStateCheckFailures = 0;
-    await persistWhatsappConnectionSnapshot(state, null, { force: true });
-  });
-
-  client.on('disconnected', async (reason) => {
-    console.log(`❌ WhatsApp disconnected voor user ${state.userId}:`, reason || 'unknown');
-    state.isConnected = false;
-    state.isAuthenticated = false;
-    state.qrCodeData = null;
-    state.lastInitError = reason || 'WhatsApp disconnected.';
-    state.transientStateCheckFailures = 0;
-    await persistWhatsappConnectionSnapshot(state, null, { force: true });
-  });
-
-  client.on('auth_failure', async (message) => {
-    console.error(`❌ WhatsApp auth_failure voor user ${state.userId}:`, message);
-    state.isConnected = false;
-    state.isAuthenticated = false;
-    state.qrCodeData = null;
-    state.lastInitError = message || 'WhatsApp auth failure.';
-    state.transientStateCheckFailures = 0;
-    await persistWhatsappConnectionSnapshot(state, null, { force: true });
-  });
-
-  client.on('message_create', async (msg) => {
-    try {
-      if (!state.client.info?.wid?._serialized) return;
-      if (msg.from === 'status@broadcast') return;
-      if (msg.from.includes('@g.us') || msg.to.includes('@g.us')) return;
-
-      const myNumber = state.client.info.wid._serialized;
-      const isSelfChat = msg.to === myNumber && msg.from === myNumber;
-
-      if (msg.fromMe && !isSelfChat) return;
-      if (state.botMessages.has(msg.body)) return;
-
-      const chatId = msg.from === myNumber ? msg.to : msg.from;
-      const dbClient = getStateDbClient(state);
-      const incomingMessage = {
-        id: msg?.id?._serialized || `${chatId}-${msg.timestamp || Date.now()}-incoming`,
-        body: msg.body || '',
-        fromMe: Boolean(msg.fromMe),
-        timestamp: msg.timestamp || Math.floor(Date.now() / 1000),
-        type: msg.type || 'chat',
-        author: msg.author || null
-      };
-      mergeMessagesIntoCache(state, chatId, [incomingMessage]);
-      if (dbClient) {
-        await persistMessagesForUser(dbClient, state.userId, chatId, [incomingMessage]);
-      }
-
-      const settings = await ensureUserSettingsLoaded(state);
-      const chatHistory = getHistory(state, chatId);
-
-      if (!isSelfChat && settings.targetAudience !== 'all') {
-        const hasHistory = chatHistory.length > 0;
-        if (settings.targetAudience === 'new' && hasHistory) return;
-        if (settings.targetAudience === 'none') return;
-      }
-
-      chatHistory.push({ role: 'user', content: msg.body || '' });
-      if (chatHistory.length > MAX_CHAT_HISTORY) {
-        chatHistory.splice(0, chatHistory.length - MAX_CHAT_HISTORY);
-      }
-
-      const finalPrompt = `${WA_BOT_PROMPT}\n\nBedrijfskennis & Instructies van de Eigenaar:\n${settings.knowledge}`;
-
-      const tools = isSelfChat
-        ? [
-            {
-              type: 'function',
-              function: {
-                name: 'send_whatsapp_message',
-                description: 'Stuur een WhatsApp bericht naar een specifiek telefoonnummer namens de gebruiker.',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    phoneNumber: {
-                      type: 'string',
-                      description: 'Het telefoonnummer inclusief landcode (bijv. +31612345678)'
-                    },
-                    message: {
-                      type: 'string',
-                      description: 'Het bericht om te versturen'
-                    }
-                  },
-                  required: ['phoneNumber', 'message']
-                }
-              }
-            }
-          ]
-        : undefined;
-
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'system', content: finalPrompt }, ...chatHistory],
-        tools,
-        tool_choice: tools ? 'auto' : undefined
-      });
-
-      const responseMessage = completion.choices[0].message;
-
-      if (responseMessage.tool_calls) {
-        for (const toolCall of responseMessage.tool_calls) {
-          if (toolCall.function.name !== 'send_whatsapp_message') continue;
-
-          const args = JSON.parse(toolCall.function.arguments);
-          const cleanNumber = String(args.phoneNumber || '').replace(/[^0-9]/g, '');
-          const targetChatId = `${cleanNumber}@c.us`;
-
-          try {
-            await state.client.sendMessage(targetChatId, args.message || '');
-            const forwardedMessage = {
-              id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              body: args.message || '',
-              fromMe: true,
-              timestamp: Math.floor(Date.now() / 1000),
-              type: 'chat',
-              author: null
-            };
-            mergeMessagesIntoCache(state, targetChatId, [forwardedMessage]);
-            if (dbClient) {
-              await persistMessagesForUser(dbClient, state.userId, targetChatId, [forwardedMessage]);
-            }
-            chatHistory.push({
-              role: 'assistant',
-              content: `[SYSTEEM: Bericht succesvol verstuurd naar ${args.phoneNumber}]`
-            });
-            await state.client.sendMessage(
-              myNumber,
-              `✅ Ik heb het volgende bericht verstuurd naar ${args.phoneNumber}:\n\n"${args.message}"`
-            );
-          } catch {
-            await state.client.sendMessage(
-              myNumber,
-              `❌ Het is niet gelukt om het bericht naar ${args.phoneNumber} te sturen.`
-            );
-          }
-        }
-      } else if (responseMessage.content) {
-        const reply = responseMessage.content;
-        chatHistory.push({ role: 'assistant', content: reply });
-
-        state.botMessages.add(reply);
-        if (state.botMessages.size > 1000) {
-          state.botMessages.clear();
-        }
-
-        if (isSelfChat) {
-          await state.client.sendMessage(myNumber, reply);
-        } else {
-          await safeReply(msg, reply, 'AI-antwoord');
-        }
-
-        const replyMessage = {
-          id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          body: reply,
-          fromMe: true,
-          timestamp: Math.floor(Date.now() / 1000),
-          type: 'chat',
-          author: null
-        };
-        mergeMessagesIntoCache(state, chatId, [replyMessage]);
-        if (dbClient) {
-          await persistMessagesForUser(dbClient, state.userId, chatId, [replyMessage]);
-        }
-      }
-    } catch (error) {
-      console.error(`❌ Auto-reply fout voor user ${state.userId}:`, error.message);
-      await safeReply(
-        msg,
-        'Sorry, ik kan je bericht even niet verwerken. Probeer het later opnieuw! 🙏',
-        'fallback'
-      );
-    }
-  });
-}
-
-function getOrCreateUserState(userId) {
-  if (userStates.has(userId)) {
-    return userStates.get(userId);
-  }
-
-  const clientId = sanitizeClientId(userId);
-  const sessionDir = sessionDirForClientId(clientId);
-
-  // Ruim oude single-session artifacts op (van pre multi-user implementatie)
-  killStaleWhatsappBrowserProcessesForSession(LEGACY_WWEBJS_SESSION_DIR);
-  cleanupSessionArtifacts(LEGACY_WWEBJS_SESSION_DIR);
-  fs.mkdirSync(sessionDir, { recursive: true });
-  killStaleWhatsappBrowserProcessesForSession(sessionDir);
-  cleanupSessionArtifacts(sessionDir);
-
-  const state = {
-    userId,
-    clientId,
-    sessionDir,
-    client: createWhatsappClient(clientId),
-    qrCodeData: null,
-    isConnected: false,
-    isAuthenticated: false,
-    isInitializing: false,
-    lastInitAttemptAt: 0,
-    lastInitError: null,
-    transientStateCheckFailures: 0,
-    lastConnectionPersistAt: 0,
-    lastConnectionPersistSignature: null,
-    lastAccessToken: null,
-    settingsLoaded: false,
-    settings: { ...DEFAULT_AI_SETTINGS },
-    chatsCache: [],
-    chatsCacheAt: 0,
-    historySyncRequestedAt: new Map(),
-    messagesCache: new Map(),
-    chatHistories: new Map(),
-    botMessages: new Set()
+  const payload = {
+    user_id: userId,
+    status: 'draft',
+    live_status: 'not_live',
+    billing_status: 'none',
+    desired_plan: DEFAULT_PLAN.key,
+    display_name: null,
+    prompt: null,
+    language: 'nl-NL',
+    currency: 'EUR',
+    updated_at: nowIso()
   };
 
-  attachWhatsappHandlers(state);
-  userStates.set(userId, state);
-  return state;
+  const { data: inserted, error: insertError } = await dbClient
+    .from('assistants')
+    .upsert(payload, { onConflict: 'user_id' })
+    .select('*')
+    .single();
+
+  if (insertError) throw insertError;
+  return inserted;
 }
 
-async function initializeUserWhatsapp(userId, { attempt = 1, accessToken = null } = {}) {
-  const state = getOrCreateUserState(userId);
+async function fetchSelectedVoice(dbClient, assistantId) {
+  const { data, error } = await dbClient
+    .from('assistant_voices')
+    .select('*')
+    .eq('assistant_id', assistantId)
+    .eq('selected', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (state.isConnected || state.isInitializing) return;
+  if (error) throw error;
+  return data || null;
+}
 
-  if (accessToken) {
-    state.lastAccessToken = accessToken;
-  }
+async function fetchSelectedNumber(dbClient, assistantId) {
+  const { data, error } = await dbClient
+    .from('assistant_numbers')
+    .select('*')
+    .eq('assistant_id', assistantId)
+    .eq('selected', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  state.isInitializing = true;
-  state.lastInitAttemptAt = Date.now();
-  state.lastInitError = null;
+  if (error) throw error;
+  return data || null;
+}
 
+async function fetchProfile(dbClient, assistantId) {
+  const { data, error } = await dbClient
+    .from('assistant_profiles')
+    .select('*')
+    .eq('assistant_id', assistantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+async function upsertUsage(dbClient, payload) {
   try {
-    killStaleWhatsappBrowserProcessesForSession(LEGACY_WWEBJS_SESSION_DIR);
-    cleanupSessionArtifacts(LEGACY_WWEBJS_SESSION_DIR);
-    killStaleWhatsappBrowserProcessesForSession(state.sessionDir);
-    cleanupSessionArtifacts(state.sessionDir);
-    await ensureUserSettingsLoaded(state, { accessToken: accessToken || state.lastAccessToken });
-    await state.client.initialize();
-    state.isInitializing = false;
+    const { error } = await dbClient.from('usage_ledger').insert(payload);
+    if (error) throw error;
   } catch (error) {
-    const message = error?.message || String(error);
-    console.error(`WhatsApp Init Error user=${userId} poging=${attempt}:`, message);
-
-    state.isConnected = false;
-    state.isAuthenticated = false;
-    state.qrCodeData = null;
-    state.isInitializing = false;
-    state.lastInitError = message;
-    await persistWhatsappConnectionSnapshot(state, null, { force: true });
-
-    const shouldRetry =
-      message.includes('browser is already running') ||
-      message.includes('Target closed') ||
-      message.includes('Session closed') ||
-      message.includes('Execution context was destroyed');
-
-    if (attempt < 5 && shouldRetry) {
-      killStaleWhatsappBrowserProcessesForSession(state.sessionDir);
-      cleanupSessionArtifacts(state.sessionDir);
-      const retryDelayMs = Math.min(1500 * attempt, 8000);
-      setTimeout(() => {
-        initializeUserWhatsapp(userId, {
-          attempt: attempt + 1,
-          accessToken: accessToken || state.lastAccessToken
-        });
-      }, retryDelayMs);
+    if (!isMissingTableError(error)) {
+      console.warn('Usage ledger write waarschuwing:', error?.message || error);
     }
   }
 }
 
-async function resetUserWhatsappState(userId, { clearAuthDir = true, reinitialize = true } = {}) {
-  const state = getOrCreateUserState(userId);
+async function createWebCallAudio(text, voice) {
+  if (!ELEVENLABS_API_KEY) return null;
 
-  state.isConnected = false;
-  state.isAuthenticated = false;
-  state.qrCodeData = null;
-  state.isInitializing = false;
-  state.lastInitError = null;
+  const voiceId = voice?.external_voice_id || voice?.externalVoiceId || getVoiceOption(voice?.voice_key).externalVoiceId;
+  if (!voiceId) return null;
 
-  try {
-    await state.client.logout();
-  } catch {
-    // logout kan mislukken als sessie al weg is
-  }
+  const clippedText = String(text || '').slice(0, 450);
+  if (!clippedText) return null;
 
   try {
-    await state.client.destroy();
-  } catch {
-    // destroy kan mislukken bij al gesloten browser
-  }
-
-  if (clearAuthDir) {
-    try {
-      fs.rmSync(state.sessionDir, { recursive: true, force: true });
-    } catch {
-      // negeer
-    }
-  }
-
-  killStaleWhatsappBrowserProcessesForSession(state.sessionDir);
-  cleanupSessionArtifacts(state.sessionDir);
-
-  state.chatHistories.clear();
-  state.historySyncRequestedAt.clear();
-  state.chatsCache = [];
-  state.chatsCacheAt = 0;
-  state.messagesCache.clear();
-  state.botMessages.clear();
-  state.client = createWhatsappClient(state.clientId);
-  attachWhatsappHandlers(state);
-  await persistWhatsappConnectionSnapshot(state, null, { force: true });
-
-  if (reinitialize) {
-    setTimeout(() => {
-      initializeUserWhatsapp(userId, { accessToken: state.lastAccessToken });
-    }, 800);
-  }
-}
-
-// --- Settings Endpoints (per user) ---
-app.get('/api/settings', requireAuth, async (req, res) => {
-  const userId = req.user.id;
-  const dbClient = getDbClient(req.accessToken);
-  const settings = await readAiSettingsForUser(dbClient, userId);
-
-  const state = getOrCreateUserState(userId);
-  state.settings = settings;
-  state.settingsLoaded = true;
-  state.lastAccessToken = req.accessToken;
-
-  res.json(settings);
-});
-
-app.post('/api/settings', requireAuth, async (req, res) => {
-  const userId = req.user.id;
-  const dbClient = getDbClient(req.accessToken);
-  const saved = await saveAiSettingsForUser(dbClient, userId, req.body || {});
-
-  const state = getOrCreateUserState(userId);
-  state.settings = saved;
-  state.settingsLoaded = true;
-  state.lastAccessToken = req.accessToken;
-
-  res.json({ success: true, settings: saved });
-});
-
-// --- AI Chat Endpoint ---
-app.post('/api/chat', requireAuth, async (req, res) => {
-  const { messages = [] } = req.body || {};
-
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages]
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'audio/mpeg',
+        'xi-api-key': ELEVENLABS_API_KEY
+      },
+      body: JSON.stringify({
+        model_id: ELEVENLABS_MODEL_ID,
+        text: clippedText,
+        voice_settings: {
+          stability: 0.45,
+          similarity_boost: 0.75,
+          style: 0.25,
+          use_speaker_boost: true
+        }
+      })
     });
 
-    res.json({ content: completion.choices[0].message.content });
+    if (!response.ok) {
+      const reason = await response.text();
+      console.warn('ElevenLabs TTS waarschuwing:', reason);
+      return null;
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const base64 = buffer.toString('base64');
+    return `data:audio/mpeg;base64,${base64}`;
   } catch (error) {
-    console.error('OpenAI Error:', error.message);
-    res.status(500).json({ error: error.message });
+    console.warn('ElevenLabs TTS fout:', error?.message || error);
+    return null;
   }
-});
+}
 
-// --- WhatsApp Endpoints (per user) ---
-app.get('/api/whatsapp/status', requireAuth, async (req, res) => {
-  const userId = req.user.id;
-  const state = getOrCreateUserState(userId);
-  state.lastAccessToken = req.accessToken;
-  const dbClient = getDbClient(req.accessToken);
-
-  // Init on-demand wanneer user pagina opent
-  if (
-    !state.isConnected &&
-    !state.qrCodeData &&
-    !state.isInitializing &&
-    Date.now() - state.lastInitAttemptAt > 8000
-  ) {
-    initializeUserWhatsapp(userId, { accessToken: req.accessToken });
+async function generateReply({ systemPrompt, history, userText, fallbackCompanyName }) {
+  if (!openai) {
+    return fallbackAssistantReply(userText, fallbackCompanyName);
   }
 
-  if (state.isConnected) {
-    try {
-      const currentState = await withTransientRetry(() => state.client.getState(), {
-        retries: 2,
-        baseDelayMs: 250,
-        label: 'getState'
-      });
-      if (currentState !== 'CONNECTED') {
-        state.isConnected = false;
-        state.qrCodeData = null;
-        state.transientStateCheckFailures = 0;
-      } else {
-        state.transientStateCheckFailures = 0;
-      }
-    } catch (error) {
-      if (isTransientContextError(error)) {
-        state.transientStateCheckFailures += 1;
-        console.warn(
-          `⚠️ Tijdelijke getState fout user=${userId} (${state.transientStateCheckFailures}x):`,
-          getErrorMessage(error)
-        );
+  try {
+    const messages = [{ role: 'system', content: systemPrompt }];
 
-        // Geef WhatsApp Web de kans om te herstellen voordat we de sessie als disconnected markeren.
-        if (state.transientStateCheckFailures >= 5) {
-          state.isConnected = false;
-          state.qrCodeData = null;
-          state.lastInitError =
-            'WhatsApp synchroniseert nog. Probeer over een paar seconden opnieuw.';
-          state.transientStateCheckFailures = 0;
-        }
-      } else {
-        state.isConnected = false;
-        state.qrCodeData = null;
+    for (const item of history.slice(-12)) {
+      if (item.role === 'user' || item.role === 'assistant') {
+        messages.push({ role: item.role, content: String(item.content || '') });
       }
     }
+
+    messages.push({ role: 'user', content: userText });
+
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      temperature: 0.45,
+      messages
+    });
+
+    const text = completion.choices?.[0]?.message?.content?.trim();
+    return text || fallbackAssistantReply(userText, fallbackCompanyName);
+  } catch (error) {
+    console.warn('OpenAI generate waarschuwing:', error?.message || error);
+    return fallbackAssistantReply(userText, fallbackCompanyName);
+  }
+}
+
+async function configureTwilioNumber({ phoneSid, baseUrl }) {
+  if (!twilioClient || !phoneSid) return;
+
+  const voiceUrl = `${baseUrl}/api/twilio/voice`;
+  const statusCallback = `${baseUrl}/api/twilio/status`;
+
+  await twilioClient.incomingPhoneNumbers(phoneSid).update({
+    voiceMethod: 'POST',
+    voiceUrl,
+    statusCallback,
+    statusCallbackMethod: 'POST'
+  });
+}
+
+async function findOwnedTwilioNumberSid(targetE164) {
+  if (!twilioClient || !targetE164) return null;
+
+  const incoming = await twilioClient.incomingPhoneNumbers.list({ limit: 100 });
+  const normalizedTarget = normalizePhoneNumber(targetE164);
+
+  const match = incoming.find((item) => normalizePhoneNumber(item.phoneNumber) === normalizedTarget);
+  return match?.sid || null;
+}
+
+async function runProvisioningJob({ dbClient, jobId, baseUrl }) {
+  const { data: job, error: jobError } = await dbClient
+    .from('provisioning_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .single();
+  if (jobError) throw jobError;
+
+  if (job.status === 'success') {
+    return { status: 'success', reused: true, job };
   }
 
-  await persistWhatsappConnectionSnapshot(state, dbClient);
+  const startedAt = nowIso();
+  await dbClient
+    .from('provisioning_jobs')
+    .update({ status: 'processing', started_at: startedAt, updated_at: startedAt })
+    .eq('id', jobId);
 
-  let phase = 'idle';
-  if (state.isConnected) phase = 'connected';
-  else if (state.qrCodeData) phase = 'awaiting_scan';
-  else if (state.isAuthenticated) phase = 'finalizing';
-  else if (state.isInitializing) phase = 'initializing';
+  const { data: assistant, error: assistantError } = await dbClient
+    .from('assistants')
+    .select('*')
+    .eq('id', job.assistant_id)
+    .single();
+  if (assistantError) throw assistantError;
 
+  if (!['paid_approved', 'active', 'live'].includes(assistant.billing_status)) {
+    const failedAt = nowIso();
+    await dbClient
+      .from('provisioning_jobs')
+      .update({
+        status: 'failed',
+        error_message: 'Klant is nog niet op paid_approved gezet.',
+        completed_at: failedAt,
+        updated_at: failedAt
+      })
+      .eq('id', jobId);
+
+    return { status: 'failed', reason: 'not_paid_approved' };
+  }
+
+  const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
+  const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
+
+  if (!selectedVoice || !selectedNumber) {
+    const failedAt = nowIso();
+    await dbClient
+      .from('provisioning_jobs')
+      .update({
+        status: 'failed',
+        error_message: 'Voice of nummer ontbreekt.',
+        completed_at: failedAt,
+        updated_at: failedAt
+      })
+      .eq('id', jobId);
+    return { status: 'failed', reason: 'missing_voice_or_number' };
+  }
+
+  let phoneSid = selectedNumber.twilio_phone_sid || null;
+  let provisioningMode = 'simulated';
+
+  if (twilioClient) {
+    if (!phoneSid && selectedNumber.e164) {
+      phoneSid = await findOwnedTwilioNumberSid(selectedNumber.e164);
+    }
+
+    if (!phoneSid) {
+      const needsAt = nowIso();
+      await dbClient.from('assistant_numbers').update({ status: 'needs_number_reselect', updated_at: needsAt }).eq('id', selectedNumber.id);
+
+      await dbClient
+        .from('assistants')
+        .update({ live_status: 'needs_number_reselect', status: 'needs_number_reselect', updated_at: needsAt })
+        .eq('id', assistant.id);
+
+      await dbClient
+        .from('provisioning_jobs')
+        .update({
+          status: 'needs_number_reselect',
+          error_message: 'Gekozen nummer is niet gevonden in Twilio account.',
+          completed_at: needsAt,
+          updated_at: needsAt
+        })
+        .eq('id', jobId);
+
+      return { status: 'needs_number_reselect' };
+    }
+
+    await configureTwilioNumber({ phoneSid, baseUrl });
+    provisioningMode = 'twilio_live';
+  } else if (!allowSimulatedProvisioning) {
+    const failedAt = nowIso();
+    await dbClient
+      .from('provisioning_jobs')
+      .update({
+        status: 'failed',
+        error_message: 'Twilio credentials ontbreken en simulatie staat uit.',
+        completed_at: failedAt,
+        updated_at: failedAt
+      })
+      .eq('id', jobId);
+
+    return { status: 'failed', reason: 'twilio_missing' };
+  }
+
+  const completedAt = nowIso();
+
+  await dbClient
+    .from('assistant_numbers')
+    .update({
+      twilio_phone_sid: phoneSid,
+      status: provisioningMode === 'twilio_live' ? 'live' : 'simulated_live',
+      linked_at: completedAt,
+      updated_at: completedAt
+    })
+    .eq('id', selectedNumber.id);
+
+  await dbClient
+    .from('assistants')
+    .update({
+      status: 'live',
+      live_status: 'live',
+      billing_status: 'active',
+      live_at: completedAt,
+      updated_at: completedAt
+    })
+    .eq('id', assistant.id);
+
+  const plan = getPlanConfig(assistant.desired_plan);
+
+  await dbClient.from('subscription_state').upsert(
+    {
+      assistant_id: assistant.id,
+      user_id: assistant.user_id,
+      plan_key: plan.key,
+      status: 'active',
+      included_minutes: plan.includedMinutes,
+      included_tasks: plan.includedTasks,
+      current_period_start: completedAt,
+      current_period_end: new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: completedAt
+    },
+    { onConflict: 'assistant_id' }
+  );
+
+  await dbClient
+    .from('provisioning_jobs')
+    .update({
+      status: 'success',
+      error_message: null,
+      completed_at: completedAt,
+      updated_at: completedAt,
+      result: {
+        mode: provisioningMode,
+        number: selectedNumber.e164,
+        phoneSid
+      }
+    })
+    .eq('id', jobId);
+
+  await upsertUsage(dbClient, {
+    assistant_id: assistant.id,
+    user_id: assistant.user_id,
+    usage_type: 'provisioning',
+    quantity: 1,
+    unit: 'job',
+    amount_eur: 0,
+    metadata: {
+      mode: provisioningMode
+    },
+    occurred_at: completedAt
+  });
+
+  return {
+    status: 'success',
+    mode: provisioningMode,
+    phoneSid,
+    assistantId: assistant.id,
+    number: selectedNumber.e164
+  };
+}
+
+route('get', '/api/health', async (_req, res) => {
   res.json({
-    connected: state.isConnected,
-    authenticated: state.isAuthenticated,
-    phase,
-    qrCode: state.qrCodeData,
-    myNumber: state.client?.info?.wid?._serialized || null,
-    initializing: state.isInitializing,
-    lastError: state.isConnected ? null : state.lastInitError || null
+    ok: true,
+    service: 'ai-hub-call-backend',
+    uptimeSec: Math.round(process.uptime()),
+    now: nowIso(),
+    features: {
+      openai: Boolean(openai),
+      elevenlabs: Boolean(ELEVENLABS_API_KEY),
+      twilio: Boolean(twilioClient),
+      supabaseServiceRole: Boolean(supabaseAdmin)
+    }
   });
 });
 
-app.get('/api/whatsapp/chats', requireAuth, async (req, res) => {
-  const state = getOrCreateUserState(req.user.id);
-  state.lastAccessToken = req.accessToken;
-  const dbClient = getDbClient(req.accessToken);
+route('get', '/api/voices/options', (_req, res) => {
+  res.json(VOICE_OPTIONS);
+});
 
-  const includeAllChats =
-    String(req.query.all || '').toLowerCase() === 'true' ||
-    String(req.query.limit || '').toLowerCase() === 'all';
-  const preferFast = String(req.query.fast || 'true').toLowerCase() !== 'false';
-  const preferCache = String(req.query.cacheFirst || 'true').toLowerCase() !== 'false';
-  const limit = includeAllChats ? null : parsePositiveInt(req.query.limit, 2000, 10000);
-  const cacheLimit = Number.isFinite(limit) ? limit : 10000;
-
-  if (
-    preferCache &&
-    Array.isArray(state.chatsCache) &&
-    state.chatsCache.length > 0 &&
-    Date.now() - state.chatsCacheAt < CHATS_CACHE_TTL_MS
-  ) {
-    return res.json(state.chatsCache);
-  }
-
-  if (!state.isConnected) {
-    if (Array.isArray(state.chatsCache) && state.chatsCache.length > 0) {
-      return res.json(state.chatsCache);
-    }
-    const cachedChats = await readCachedChatsForUser(dbClient, req.user.id, cacheLimit);
-    return res.json(cachedChats);
-  }
-
+route('get', '/api/numbers/options', requireAuth, async (req, res) => {
   try {
-    const standardChats = await withTransientRetry(() => state.client.getChats(), {
-      retries: 3,
-      baseDelayMs: 250,
-      label: 'getChats'
-    });
-    let filteredChats = standardChats
-      .filter((chat) => {
-        const chatId = chat?.id?._serialized || '';
-        return chatId !== 'status@broadcast';
-      })
-      .sort((a, b) => {
-        const bTs = b?.timestamp || b?.lastMessage?.timestamp || 0;
-        const aTs = a?.timestamp || a?.lastMessage?.timestamp || 0;
-        return bTs - aTs;
-      });
+    const options = [];
 
-    if (Number.isFinite(limit)) {
-      filteredChats = filteredChats.slice(0, limit);
+    if (twilioClient) {
+      const incoming = await twilioClient.incomingPhoneNumbers.list({ limit: 40 });
+      for (const number of incoming) {
+        options.push({
+          e164: normalizePhoneNumber(number.phoneNumber),
+          label: number.friendlyName || number.phoneNumber,
+          countryCode: number.isoCountry || 'NL',
+          source: 'twilio_owned',
+          twilioPhoneSid: number.sid
+        });
+      }
     }
 
-    const cachedChats = preferFast
-      ? []
-      : await readCachedChatsForUser(dbClient, req.user.id, cacheLimit);
-    const cachedById = new Map(cachedChats.map((chat) => [chat.id, chat]));
+    if (options.length === 0) {
+      res.json(DEFAULT_NUMBERS);
+      return;
+    }
 
-    const mappedChats = await Promise.all(
-      filteredChats.map(async (chat, index) => {
-        const cached = cachedById.get(chat.id._serialized);
-        let avatar = null;
-        let contactName = null;
-        let phoneNumber = chat?.id?.user || cached?.phoneNumber || null;
+    res.json(options);
+  } catch (error) {
+    console.warn('Numbers options fallback:', error?.message || error);
+    res.json(DEFAULT_NUMBERS);
+  }
+});
 
-        const shouldEnrichProfile = !preferFast && index < 40;
+route('get', '/api/assistant/state', requireAuth, async (req, res) => {
+  try {
+    const dbClient = getDbClient(req.accessToken);
+    const assistant = await ensureAssistant(dbClient, req.user.id);
+    const profile = await fetchProfile(dbClient, assistant.id);
+    const voice = await fetchSelectedVoice(dbClient, assistant.id);
+    const number = await fetchSelectedNumber(dbClient, assistant.id);
 
-        if (shouldEnrichProfile) {
-          try {
-            const contact = await chat.getContact();
-            if (contact) {
-              contactName = contact.pushname || contact.name || contact.shortName || null;
-              phoneNumber = contact.number || phoneNumber;
-              avatar = await contact.getProfilePicUrl().catch(() => null);
-            }
-          } catch {
-            // contact kan ontbreken door privacy settings
-          }
-        }
+    const { data: invoice } = await dbClient
+      .from('invoices')
+      .select('*')
+      .eq('assistant_id', assistant.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-        return {
-          id: chat.id._serialized,
-          name: chat.name || contactName || cached?.name || phoneNumber || 'Onbekend contact',
-          unreadCount: chat.unreadCount || 0,
-          timestamp: chat.timestamp || chat?.lastMessage?.timestamp || 0,
-          isGroup: Boolean(chat.isGroup),
-          avatar: avatar || cached?.avatar || null,
-          phoneNumber: phoneNumber || chat?.id?.user || null
-        };
+    const { data: provisioningJob } = await dbClient
+      .from('provisioning_jobs')
+      .select('*')
+      .eq('assistant_id', assistant.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: subscription } = await dbClient
+      .from('subscription_state')
+      .select('*')
+      .eq('assistant_id', assistant.id)
+      .maybeSingle();
+
+    res.json({
+      assistant,
+      profile,
+      voice,
+      number,
+      latestInvoice: invoice || null,
+      latestProvisioningJob: provisioningJob || null,
+      subscription: subscription || null,
+      plan: getPlanConfig(subscription?.plan_key || assistant.desired_plan)
+    });
+  } catch (error) {
+    sendDbError(res, error);
+  }
+});
+
+async function handleOnboardingSave(req, res, overridePayload = null) {
+  try {
+    const dbClient = getDbClient(req.accessToken);
+    const assistant = await ensureAssistant(dbClient, req.user.id);
+    const payload = onboardingFromPayload(overridePayload || req.body || {});
+    const selectedVoiceOption = getVoiceOption(payload.voiceKey);
+
+    const profilePayload = {
+      assistant_id: assistant.id,
+      user_id: req.user.id,
+      company_name: payload.companyName,
+      business_type: payload.businessType,
+      services: payload.services,
+      pricing: payload.pricing,
+      opening_hours: payload.openingHours,
+      tone_of_voice: payload.toneOfVoice,
+      goals: payload.goals,
+      greeting: payload.greeting,
+      knowledge: payload.knowledge,
+      updated_at: nowIso()
+    };
+
+    const { error: profileError } = await dbClient
+      .from('assistant_profiles')
+      .upsert(profilePayload, { onConflict: 'assistant_id' });
+    if (profileError) throw profileError;
+
+    await dbClient.from('assistant_voices').update({ selected: false, updated_at: nowIso() }).eq('assistant_id', assistant.id);
+
+    const { error: voiceError } = await dbClient.from('assistant_voices').upsert(
+      {
+        assistant_id: assistant.id,
+        user_id: req.user.id,
+        voice_key: selectedVoiceOption.key,
+        display_name: selectedVoiceOption.name,
+        provider: selectedVoiceOption.provider,
+        external_voice_id: selectedVoiceOption.externalVoiceId,
+        preview_url: selectedVoiceOption.previewUrl,
+        twilio_voice: selectedVoiceOption.twilioVoice,
+        selected: true,
+        status: 'selected',
+        updated_at: nowIso()
+      },
+      { onConflict: 'assistant_id,voice_key' }
+    );
+    if (voiceError) throw voiceError;
+
+    if (payload.numberE164) {
+      await dbClient.from('assistant_numbers').update({ selected: false, updated_at: nowIso() }).eq('assistant_id', assistant.id);
+
+      const numberLabel = payload.numberLabel || payload.numberE164;
+      const { error: numberError } = await dbClient.from('assistant_numbers').upsert(
+        {
+          assistant_id: assistant.id,
+          user_id: req.user.id,
+          e164: payload.numberE164,
+          display_label: numberLabel,
+          selected: true,
+          status: 'reserved',
+          source: 'wizard',
+          updated_at: nowIso()
+        },
+        { onConflict: 'assistant_id,e164' }
+      );
+      if (numberError) throw numberError;
+    }
+
+    const profile = await fetchProfile(dbClient, assistant.id);
+    const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
+    const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
+    const prompt = buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
+
+    const { data: updatedAssistant, error: assistantUpdateError } = await dbClient
+      .from('assistants')
+      .update({
+        display_name: payload.companyName,
+        desired_plan: payload.planKey,
+        prompt,
+        status: 'configured',
+        updated_at: nowIso()
       })
+      .eq('id', assistant.id)
+      .select('*')
+      .single();
+
+    if (assistantUpdateError) throw assistantUpdateError;
+
+    await upsertUsage(dbClient, {
+      assistant_id: assistant.id,
+      user_id: req.user.id,
+      usage_type: 'onboarding_save',
+      quantity: 1,
+      unit: 'event',
+      amount_eur: 0,
+      metadata: { step: 'wizard' },
+      occurred_at: nowIso()
+    });
+
+    return res.json({
+      success: true,
+      assistant: updatedAssistant,
+      profile,
+      voice: selectedVoice,
+      number: selectedNumber,
+      prompt
+    });
+  } catch (error) {
+    return sendDbError(res, error);
+  }
+}
+
+route('post', '/api/onboarding/save', requireAuth, async (req, res) => {
+  return handleOnboardingSave(req, res);
+});
+
+route('post', '/api/assistant/config', requireAuth, async (req, res) => {
+  const legacyPayload = {
+    ...req.body,
+    companyName: req.body?.companyName,
+    voiceKey: req.body?.voiceKey || req.body?.voice || VOICE_OPTIONS[0].key,
+    numberE164: req.body?.numberE164 || req.body?.phoneNumber
+  };
+
+  return handleOnboardingSave(req, res, legacyPayload);
+});
+
+route('post', '/api/webcall/turn', requireAuth, async (req, res) => {
+  try {
+    const dbClient = getDbClient(req.accessToken);
+    const assistant = await ensureAssistant(dbClient, req.user.id);
+    const inputText = safeText(req.body?.inputText || req.body?.text);
+
+    if (!inputText) {
+      return res.status(400).json({ error: 'inputText is verplicht.' });
+    }
+
+    let sessionId = safeText(req.body?.sessionId);
+    let session = null;
+
+    if (sessionId) {
+      const { data, error } = await dbClient
+        .from('web_test_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      if (error) throw error;
+      session = data || null;
+    }
+
+    if (!session) {
+      const { data: created, error: createError } = await dbClient
+        .from('web_test_sessions')
+        .insert({
+          assistant_id: assistant.id,
+          user_id: req.user.id,
+          status: 'active',
+          started_at: nowIso(),
+          updated_at: nowIso()
+        })
+        .select('*')
+        .single();
+
+      if (createError) throw createError;
+      session = created;
+      sessionId = created.id;
+    }
+
+    const { data: existingTurns, error: turnsError } = await dbClient
+      .from('web_test_turns')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('turn_index', { ascending: true });
+    if (turnsError) throw turnsError;
+
+    const history = (existingTurns || []).map((turn) => ({
+      role: turn.role,
+      content: turn.output_text || turn.input_text || ''
+    }));
+
+    const profile = await fetchProfile(dbClient, assistant.id);
+    const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
+    const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
+
+    const systemPrompt =
+      assistant.prompt || buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
+
+    const start = Date.now();
+    const assistantText = await generateReply({
+      systemPrompt,
+      history,
+      userText: inputText,
+      fallbackCompanyName: profile?.company_name || assistant.display_name || 'jouw bedrijf'
+    });
+
+    const latencyMs = Date.now() - start;
+    const audioDataUrl = await createWebCallAudio(assistantText, selectedVoice || {});
+
+    const currentIndex = (existingTurns || []).length;
+
+    const turnRows = [
+      {
+        session_id: sessionId,
+        assistant_id: assistant.id,
+        user_id: req.user.id,
+        turn_index: currentIndex + 1,
+        role: 'user',
+        input_text: inputText,
+        output_text: null,
+        latency_ms: 0,
+        debug_steps: { state: 'listening' },
+        created_at: nowIso()
+      },
+      {
+        session_id: sessionId,
+        assistant_id: assistant.id,
+        user_id: req.user.id,
+        turn_index: currentIndex + 2,
+        role: 'assistant',
+        input_text: null,
+        output_text: assistantText,
+        latency_ms: latencyMs,
+        audio_data_url: audioDataUrl,
+        debug_steps: {
+          phases: ['listening', 'thinking', 'speaking'],
+          model: openai ? OPENAI_MODEL : 'fallback'
+        },
+        created_at: nowIso()
+      }
+    ];
+
+    const { error: writeTurnError } = await dbClient.from('web_test_turns').insert(turnRows);
+    if (writeTurnError) throw writeTurnError;
+
+    await dbClient
+      .from('web_test_sessions')
+      .update({ updated_at: nowIso(), status: 'active' })
+      .eq('id', sessionId);
+
+    await upsertUsage(dbClient, {
+      assistant_id: assistant.id,
+      user_id: req.user.id,
+      usage_type: 'web_test_task',
+      quantity: 1,
+      unit: 'task',
+      amount_eur: 0,
+      metadata: {
+        latencyMs,
+        sessionId
+      },
+      occurred_at: nowIso()
+    });
+
+    res.json({
+      success: true,
+      sessionId,
+      state: 'speaking',
+      assistantText,
+      audioDataUrl,
+      latencyMs,
+      debugPhases: [
+        { key: 'listening', label: 'Luisteren', done: true },
+        { key: 'thinking', label: 'AI denkt na', done: true },
+        { key: 'speaking', label: 'AI spreekt', done: true }
+      ]
+    });
+  } catch (error) {
+    sendDbError(res, error);
+  }
+});
+
+route('post', '/api/invoice/request', requireAuth, async (req, res) => {
+  try {
+    const dbClient = getDbClient(req.accessToken);
+    const assistant = await ensureAssistant(dbClient, req.user.id);
+
+    const plan = getPlanConfig(req.body?.planKey || assistant.desired_plan);
+    const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(
+      Math.random() * 100000
+    )}`;
+
+    const { data: billingAccount, error: billingError } = await dbClient
+      .from('billing_accounts')
+      .upsert(
+        {
+          user_id: req.user.id,
+          email: req.user.email || null,
+          payer_name: safeText(req.body?.payerName || req.user.user_metadata?.full_name || ''),
+          status: 'active',
+          updated_at: nowIso()
+        },
+        { onConflict: 'user_id' }
+      )
+      .select('*')
+      .single();
+    if (billingError) throw billingError;
+
+    const { data: invoice, error: invoiceError } = await dbClient
+      .from('invoices')
+      .insert({
+        assistant_id: assistant.id,
+        user_id: req.user.id,
+        billing_account_id: billingAccount.id,
+        invoice_number: invoiceNumber,
+        status: 'invoice_sent',
+        plan_key: plan.key,
+        amount_eur: plan.monthlyPriceEur,
+        currency: 'EUR',
+        due_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        notes: safeText(req.body?.notes),
+        updated_at: nowIso()
+      })
+      .select('*')
+      .single();
+    if (invoiceError) throw invoiceError;
+
+    await dbClient
+      .from('assistants')
+      .update({
+        billing_status: 'invoice_sent',
+        desired_plan: plan.key,
+        status: 'awaiting_payment',
+        updated_at: nowIso()
+      })
+      .eq('id', assistant.id);
+
+    await dbClient.from('subscription_state').upsert(
+      {
+        assistant_id: assistant.id,
+        user_id: req.user.id,
+        plan_key: plan.key,
+        status: 'pending_payment',
+        included_minutes: plan.includedMinutes,
+        included_tasks: plan.includedTasks,
+        updated_at: nowIso()
+      },
+      { onConflict: 'assistant_id' }
     );
 
-    state.chatsCache = mappedChats;
-    state.chatsCacheAt = Date.now();
-    await persistChatsForUser(dbClient, req.user.id, mappedChats);
+    await upsertUsage(dbClient, {
+      assistant_id: assistant.id,
+      user_id: req.user.id,
+      usage_type: 'invoice_request',
+      quantity: 1,
+      unit: 'event',
+      amount_eur: 0,
+      metadata: {
+        invoiceNumber,
+        plan: plan.key
+      },
+      occurred_at: nowIso()
+    });
 
-    res.json(mappedChats);
+    res.json({
+      success: true,
+      invoice,
+      nextStep: 'Wacht op admin payment approval: paid_approved.'
+    });
   } catch (error) {
-    console.error('Fout bij ophalen chats:', error.message);
-    if (Array.isArray(state.chatsCache) && state.chatsCache.length > 0) {
-      return res.json(state.chatsCache);
-    }
-    const cachedChats = await readCachedChatsForUser(dbClient, req.user.id, cacheLimit);
-    if (cachedChats.length > 0) {
-      return res.json(cachedChats);
-    }
-    res.status(500).json({ error: 'Kon chats niet laden.' });
+    sendDbError(res, error);
   }
 });
 
-app.get('/api/whatsapp/chat/:chatId/messages', requireAuth, async (req, res) => {
-  const state = getOrCreateUserState(req.user.id);
-  state.lastAccessToken = req.accessToken;
-  const dbClient = getDbClient(req.accessToken);
-
-  const chatId = decodeURIComponent(req.params.chatId || '');
-  const shouldSyncHistory = String(req.query.sync || 'true').toLowerCase() !== 'false';
-  const forceSyncHistory = String(req.query.forceSync || '').toLowerCase() === 'true';
-  const includeAllMessages =
-    String(req.query.all || '').toLowerCase() === 'true' ||
-    String(req.query.limit || '').toLowerCase() === 'all';
-  const messageLimit = includeAllMessages ? 3000 : parsePositiveInt(req.query.limit, 600, 3000);
-
-  if (!state.isConnected) {
-    const cachedFromDb = await readCachedMessagesForUser(dbClient, req.user.id, chatId, messageLimit);
-    if (cachedFromDb.length > 0) {
-      mergeMessagesIntoCache(state, chatId, cachedFromDb);
-    }
-    return res.json(cachedFromDb);
-  }
-
+route('post', '/api/admin/approve-payment', requireAdmin, async (req, res) => {
   try {
-    const chat = await withTransientRetry(() => state.client.getChatById(chatId), {
-      retries: 3,
-      baseDelayMs: 250,
-      label: 'getChatById'
-    });
-    if (!chat) {
-      return res.status(404).json({ error: 'Chat niet gevonden.' });
+    const dbClient = getServiceClient();
+    if (!dbClient) {
+      return res.status(500).json({ error: 'Supabase service client ontbreekt.' });
     }
 
-    if (shouldSyncHistory) {
-      await maybeTriggerHistorySync(state, chatId, { force: forceSyncHistory });
+    const invoiceId = safeText(req.body?.invoiceId);
+    const userId = safeText(req.body?.userId);
+    const assistantId = safeText(req.body?.assistantId);
+
+    let invoice = null;
+
+    if (invoiceId) {
+      const { data, error } = await dbClient.from('invoices').select('*').eq('id', invoiceId).maybeSingle();
+      if (error) throw error;
+      invoice = data;
+    } else if (assistantId) {
+      const { data, error } = await dbClient
+        .from('invoices')
+        .select('*')
+        .eq('assistant_id', assistantId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      invoice = data;
+    } else if (userId) {
+      const { data, error } = await dbClient
+        .from('invoices')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      invoice = data;
     }
 
-    const loadMessagesForChat = async () => {
-      const liveChat = await state.client.getChatById(chatId);
-      if (!liveChat) return [];
-      return fetchMessagesWithFallback(liveChat, messageLimit);
-    };
-
-    let fetchedMessages = await withTransientRetry(loadMessagesForChat, {
-      retries: 3,
-      baseDelayMs: 300,
-      label: 'fetchMessages'
-    });
-
-    // Na history sync kan data asynchroon binnenkomen; korte retries helpen oude berichten zichtbaar maken.
-    if (shouldSyncHistory) {
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        await sleep(700);
-        try {
-          const retriedMessages = await withTransientRetry(loadMessagesForChat, {
-            retries: 2,
-            baseDelayMs: 250,
-            label: 'fetchMessages-retry'
-          });
-          if (retriedMessages.length > fetchedMessages.length) {
-            fetchedMessages = retriedMessages;
-          }
-        } catch (error) {
-          if (!isTransientContextError(error)) {
-            throw error;
-          }
-        }
-      }
+    if (!invoice) {
+      return res.status(404).json({ error: 'Geen invoice gevonden voor deze aanvraag.' });
     }
 
-    const messages = fetchedMessages
-      .map((msg, index) => ({
-        id: msg?.id?._serialized || `${chatId}-${msg.timestamp}-${index}`,
-        body: msg.body || '',
-        fromMe: Boolean(msg.fromMe),
-        timestamp: msg.timestamp || 0,
-        type: msg.type || 'chat',
-        author: msg.author || null
-      }))
-      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    const approvedAt = nowIso();
 
-    mergeMessagesIntoCache(state, chatId, messages);
-    await persistMessagesForUser(dbClient, req.user.id, chatId, messages);
-    res.json(messages);
-  } catch (error) {
-    console.error('Fout bij ophalen berichten:', getErrorMessage(error));
+    const { data: updatedInvoice, error: invoiceUpdateError } = await dbClient
+      .from('invoices')
+      .update({ status: 'paid_approved', paid_at: approvedAt, updated_at: approvedAt })
+      .eq('id', invoice.id)
+      .select('*')
+      .single();
+    if (invoiceUpdateError) throw invoiceUpdateError;
 
-    const cached = state.messagesCache.get(chatId);
-    const cachedFromDb = await readCachedMessagesForUser(dbClient, req.user.id, chatId, messageLimit);
-    if (cachedFromDb.length > 0) {
-      mergeMessagesIntoCache(state, chatId, cachedFromDb);
-      return res.json(cachedFromDb);
-    }
+    const { data: assistant, error: assistantUpdateError } = await dbClient
+      .from('assistants')
+      .update({
+        billing_status: 'paid_approved',
+        status: 'provisioning_pending',
+        desired_plan: updatedInvoice.plan_key,
+        updated_at: approvedAt
+      })
+      .eq('id', updatedInvoice.assistant_id)
+      .select('*')
+      .single();
+    if (assistantUpdateError) throw assistantUpdateError;
 
-    if (isTransientContextError(error)) {
-      if (Array.isArray(cached) && cached.length > 0) {
-        return res.json(cached);
-      }
-      return res.status(503).json({
-        error: 'WhatsApp synchroniseert nog. Probeer over een paar seconden opnieuw.'
+    const { data: provisioningJob, error: provisioningError } = await dbClient
+      .from('provisioning_jobs')
+      .insert({
+        assistant_id: assistant.id,
+        user_id: assistant.user_id,
+        status: 'queued',
+        trigger: 'admin_payment_approval',
+        attempt_count: 0,
+        payload: {
+          invoiceId: updatedInvoice.id
+        },
+        created_at: approvedAt,
+        updated_at: approvedAt
+      })
+      .select('*')
+      .single();
+    if (provisioningError) throw provisioningError;
+
+    const shouldRunNow = req.body?.runNow !== false;
+    let provisioningResult = { status: 'queued' };
+
+    if (shouldRunNow) {
+      provisioningResult = await runProvisioningJob({
+        dbClient,
+        jobId: provisioningJob.id,
+        baseUrl: getBaseUrl(req)
       });
     }
 
-    res.status(500).json({ error: 'Kon berichten niet laden.' });
+    res.json({
+      success: true,
+      invoice: updatedInvoice,
+      assistant,
+      provisioningJobId: provisioningJob.id,
+      provisioningResult
+    });
+  } catch (error) {
+    sendDbError(res, error);
   }
 });
 
-app.post('/api/whatsapp/send', requireAuth, async (req, res) => {
-  const state = getOrCreateUserState(req.user.id);
-  state.lastAccessToken = req.accessToken;
-  const dbClient = getDbClient(req.accessToken);
-  const { phoneNumber, message, chatId } = req.body || {};
-
-  if (!state.isConnected) {
-    return res.status(400).json({ error: 'WhatsApp is niet verbonden.' });
-  }
-
+route('post', '/api/provision/run', requireAuth, async (req, res) => {
   try {
-    let targetChatId = chatId;
+    const dbClient = getDbClient(req.accessToken);
+    const assistant = await ensureAssistant(dbClient, req.user.id);
 
-    if (!targetChatId && phoneNumber) {
-      const cleanNumber = String(phoneNumber).replace(/[^0-9]/g, '');
-      targetChatId = `${cleanNumber}@c.us`;
+    const { data: job, error: jobError } = await dbClient
+      .from('provisioning_jobs')
+      .select('*')
+      .eq('assistant_id', assistant.id)
+      .in('status', ['queued', 'failed', 'needs_number_reselect'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (jobError) throw jobError;
+    if (!job) {
+      return res.status(404).json({ error: 'Geen provisioning job gevonden voor deze gebruiker.' });
     }
 
-    if (!targetChatId) {
-      return res.status(400).json({ error: 'chatId of phoneNumber is verplicht.' });
+    const result = await runProvisioningJob({
+      dbClient,
+      jobId: job.id,
+      baseUrl: getBaseUrl(req)
+    });
+
+    return res.json({ success: true, jobId: job.id, result });
+  } catch (error) {
+    return sendDbError(res, error);
+  }
+});
+
+route('post', '/api/admin/provision/run', requireAdmin, async (req, res) => {
+  try {
+    const dbClient = getServiceClient();
+    const jobId = safeText(req.body?.jobId);
+
+    if (!jobId) {
+      return res.status(400).json({ error: 'jobId is verplicht voor admin provision/run.' });
     }
 
-    await state.client.sendMessage(targetChatId, message || '');
-    const outgoingMessage = {
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      body: message || '',
-      fromMe: true,
-      timestamp: Math.floor(Date.now() / 1000),
-      type: 'chat',
-      author: null
-    };
-    mergeMessagesIntoCache(state, targetChatId, [outgoingMessage]);
-    await persistMessagesForUser(dbClient, req.user.id, targetChatId, [outgoingMessage]);
-    res.json({ success: true, message: 'Bericht verstuurd' });
-  } catch (error) {
-    console.error('Fout sturen WhatsApp bericht:', error.message);
-    res.status(500).json({ error: 'Kon bericht niet versturen.' });
-  }
-});
-
-app.post('/api/whatsapp/disconnect', requireAuth, async (req, res) => {
-  try {
-    const state = getOrCreateUserState(req.user.id);
-    state.lastAccessToken = req.accessToken;
-    await resetUserWhatsappState(req.user.id, {
-      clearAuthDir: true,
-      reinitialize: true
+    const result = await runProvisioningJob({
+      dbClient,
+      jobId,
+      baseUrl: getBaseUrl(req)
     });
 
-    res.json({ success: true });
+    return res.json({ success: true, jobId, result });
   } catch (error) {
-    console.error('Fout bij verbreken verbinding:', error.message);
-    res.status(500).json({ error: 'Kon verbinding niet verbreken.' });
+    return sendDbError(res, error);
   }
 });
 
-app.post('/api/whatsapp/relink', requireAuth, async (req, res) => {
+route('get', '/api/usage/summary', requireAuth, async (req, res) => {
   try {
-    const state = getOrCreateUserState(req.user.id);
-    state.lastAccessToken = req.accessToken;
-    await resetUserWhatsappState(req.user.id, {
-      clearAuthDir: true,
-      reinitialize: true
+    const dbClient = getDbClient(req.accessToken);
+    const assistant = await ensureAssistant(dbClient, req.user.id);
+
+    const plan = getPlanConfig(assistant.desired_plan);
+
+    const periodStart = new Date();
+    periodStart.setUTCDate(1);
+    periodStart.setUTCHours(0, 0, 0, 0);
+
+    const { data: usageRows, error: usageError } = await dbClient
+      .from('usage_ledger')
+      .select('usage_type,quantity,amount_eur,occurred_at')
+      .eq('assistant_id', assistant.id)
+      .gte('occurred_at', periodStart.toISOString());
+    if (usageError) throw usageError;
+
+    let minutesUsed = 0;
+    let tasksUsed = 0;
+    let variableCosts = 0;
+
+    for (const row of usageRows || []) {
+      const type = String(row.usage_type || '');
+      const quantity = Number(row.quantity || 0);
+      const amount = Number(row.amount_eur || 0);
+
+      if (type === 'call_minutes') minutesUsed += quantity;
+      if (type === 'web_test_task' || type === 'call_task') tasksUsed += quantity;
+      variableCosts += amount;
+    }
+
+    const overageMinutes = Math.max(0, minutesUsed - plan.includedMinutes);
+    const overageTasks = Math.max(0, tasksUsed - plan.includedTasks);
+    const overageEstimate = overageMinutes * 0.2 + overageTasks * 0.02;
+
+    res.json({
+      plan,
+      usage: {
+        minutesUsed,
+        tasksUsed,
+        includedMinutes: plan.includedMinutes,
+        includedTasks: plan.includedTasks,
+        overageMinutes,
+        overageTasks,
+        overageEstimateEur: Number(overageEstimate.toFixed(2)),
+        variableCostsEur: Number(variableCosts.toFixed(2)),
+        expectedInvoiceEur: Number((plan.monthlyPriceEur + overageEstimate).toFixed(2))
+      },
+      periodStart: periodStart.toISOString(),
+      generatedAt: nowIso()
+    });
+  } catch (error) {
+    sendDbError(res, error);
+  }
+});
+
+route('post', '/api/twilio/voice', async (req, res) => {
+  try {
+    const dbClient = getServiceClient();
+    if (!dbClient) throw new Error('Supabase service client ontbreekt.');
+
+    const to = normalizePhoneNumber(req.body?.To);
+    const from = normalizePhoneNumber(req.body?.From);
+    const callSid = safeText(req.body?.CallSid);
+
+    const voiceResponse = new twilio.twiml.VoiceResponse();
+
+    if (!callSid || !to) {
+      voiceResponse.say({ language: 'nl-NL', voice: 'alice' }, 'Ongeldige call gegevens ontvangen.');
+      voiceResponse.hangup();
+      return res.type('text/xml').send(voiceResponse.toString());
+    }
+
+    const { data: numberRow, error: numberError } = await dbClient
+      .from('assistant_numbers')
+      .select('*')
+      .eq('e164', to)
+      .eq('selected', true)
+      .maybeSingle();
+
+    if (numberError) throw numberError;
+
+    if (!numberRow) {
+      voiceResponse.say({ language: 'nl-NL', voice: 'alice' }, 'Dit nummer is nog niet actief.');
+      voiceResponse.hangup();
+      return res.type('text/xml').send(voiceResponse.toString());
+    }
+
+    const { data: assistant, error: assistantError } = await dbClient
+      .from('assistants')
+      .select('*')
+      .eq('id', numberRow.assistant_id)
+      .single();
+    if (assistantError) throw assistantError;
+
+    const profile = await fetchProfile(dbClient, assistant.id);
+
+    const greeting =
+      profile?.greeting ||
+      `Goedemiddag, je spreekt met de AI assistent van ${profile?.company_name || assistant.display_name || 'ons bedrijf'}. Waarmee kan ik helpen?`;
+
+    await dbClient.from('call_sessions').upsert(
+      {
+        assistant_id: assistant.id,
+        user_id: assistant.user_id,
+        call_sid: callSid,
+        from_number: from,
+        to_number: to,
+        status: 'in_progress',
+        started_at: nowIso(),
+        updated_at: nowIso()
+      },
+      { onConflict: 'call_sid' }
+    );
+
+    voiceResponse.say({ language: 'nl-NL', voice: 'alice' }, greeting);
+
+    const gather = voiceResponse.gather({
+      input: 'speech',
+      speechTimeout: 'auto',
+      language: 'nl-NL',
+      method: 'POST',
+      action: `${getBaseUrl(req)}/api/twilio/turn?callSid=${encodeURIComponent(callSid)}`
     });
 
-    res.json({ success: true, message: 'Nieuwe QR generatie gestart.' });
+    gather.say({ language: 'nl-NL', voice: 'alice' }, 'Ik luister.');
+
+    voiceResponse.redirect({ method: 'POST' }, `${getBaseUrl(req)}/api/twilio/turn?callSid=${encodeURIComponent(callSid)}`);
+
+    res.type('text/xml').send(voiceResponse.toString());
   } catch (error) {
-    console.error('Fout bij forceren nieuwe QR:', error.message);
-    res.status(500).json({ error: 'Kon nieuwe QR niet forceren.' });
+    console.error('Twilio /voice fout:', error);
+    const voiceResponse = new twilio.twiml.VoiceResponse();
+    voiceResponse.say({ language: 'nl-NL', voice: 'alice' }, 'Er is een fout opgetreden. Probeer later opnieuw.');
+    voiceResponse.hangup();
+    res.type('text/xml').send(voiceResponse.toString());
   }
 });
 
-app.get('/api/debug-store', requireAuth, async (req, res) => {
+route('post', '/api/twilio/turn', async (req, res) => {
   try {
-    const state = getOrCreateUserState(req.user.id);
-    state.lastAccessToken = req.accessToken;
-    const data = await state.client.pupPage.evaluate(() => Object.keys(window.Store || {}));
-    res.json(data);
+    const dbClient = getServiceClient();
+    if (!dbClient) throw new Error('Supabase service client ontbreekt.');
+
+    const callSid = safeText(req.query.callSid || req.body?.CallSid);
+    const speech = safeText(req.body?.SpeechResult);
+    const voiceResponse = new twilio.twiml.VoiceResponse();
+
+    const { data: callSession, error: sessionError } = await dbClient
+      .from('call_sessions')
+      .select('*')
+      .eq('call_sid', callSid)
+      .maybeSingle();
+
+    if (sessionError) throw sessionError;
+
+    if (!callSession) {
+      voiceResponse.say({ language: 'nl-NL', voice: 'alice' }, 'Sessie niet gevonden.');
+      voiceResponse.hangup();
+      return res.type('text/xml').send(voiceResponse.toString());
+    }
+
+    const { data: assistant, error: assistantError } = await dbClient
+      .from('assistants')
+      .select('*')
+      .eq('id', callSession.assistant_id)
+      .single();
+    if (assistantError) throw assistantError;
+
+    const profile = await fetchProfile(dbClient, assistant.id);
+    const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
+    const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
+
+    const { data: turns, error: turnsError } = await dbClient
+      .from('call_turns')
+      .select('*')
+      .eq('call_session_id', callSession.id)
+      .order('turn_index', { ascending: true });
+    if (turnsError) throw turnsError;
+
+    const turnHistory = (turns || []).map((turn) => ({
+      role: turn.role,
+      content: turn.response_text || turn.transcript || ''
+    }));
+
+    const userText = speech || 'Stilte';
+
+    const systemPrompt =
+      assistant.prompt || buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
+
+    const answer = speech
+      ? await generateReply({
+          systemPrompt,
+          history: turnHistory,
+          userText,
+          fallbackCompanyName: profile?.company_name || assistant.display_name || 'ons bedrijf'
+        })
+      : 'Ik heb je niet goed verstaan. Kun je je vraag herhalen?';
+
+    const turnBaseIndex = (turns || []).length;
+
+    await dbClient.from('call_turns').insert([
+      {
+        call_session_id: callSession.id,
+        assistant_id: assistant.id,
+        user_id: assistant.user_id,
+        turn_index: turnBaseIndex + 1,
+        role: 'user',
+        transcript: userText,
+        response_text: null,
+        created_at: nowIso()
+      },
+      {
+        call_session_id: callSession.id,
+        assistant_id: assistant.id,
+        user_id: assistant.user_id,
+        turn_index: turnBaseIndex + 2,
+        role: 'assistant',
+        transcript: null,
+        response_text: answer,
+        created_at: nowIso()
+      }
+    ]);
+
+    await upsertUsage(dbClient, {
+      assistant_id: assistant.id,
+      user_id: assistant.user_id,
+      usage_type: 'call_task',
+      quantity: 1,
+      unit: 'task',
+      amount_eur: 0,
+      metadata: {
+        callSid
+      },
+      occurred_at: nowIso()
+    });
+
+    const shouldEnd = /\b(doei|tot ziens|hang op|bedankt dat was alles)\b/i.test(userText);
+
+    voiceResponse.say({ language: 'nl-NL', voice: selectedVoice?.twilio_voice || 'alice' }, answer);
+
+    if (shouldEnd) {
+      voiceResponse.say({ language: 'nl-NL', voice: selectedVoice?.twilio_voice || 'alice' }, 'Fijn gesprek. Tot ziens.');
+      voiceResponse.hangup();
+
+      await dbClient
+        .from('call_sessions')
+        .update({ status: 'completed', ended_at: nowIso(), updated_at: nowIso() })
+        .eq('id', callSession.id);
+    } else {
+      const gather = voiceResponse.gather({
+        input: 'speech',
+        speechTimeout: 'auto',
+        language: 'nl-NL',
+        method: 'POST',
+        action: `${getBaseUrl(req)}/api/twilio/turn?callSid=${encodeURIComponent(callSid)}`
+      });
+
+      gather.say({ language: 'nl-NL', voice: selectedVoice?.twilio_voice || 'alice' }, 'Waarmee kan ik nog meer helpen?');
+      voiceResponse.redirect({ method: 'POST' }, `${getBaseUrl(req)}/api/twilio/turn?callSid=${encodeURIComponent(callSid)}`);
+    }
+
+    res.type('text/xml').send(voiceResponse.toString());
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Twilio /turn fout:', error);
+    const voiceResponse = new twilio.twiml.VoiceResponse();
+    voiceResponse.say({ language: 'nl-NL', voice: 'alice' }, 'Er ging iets mis tijdens het gesprek.');
+    voiceResponse.hangup();
+    res.type('text/xml').send(voiceResponse.toString());
   }
 });
 
-app.post('/api/assistant/config', requireAuth, (req, res) => {
-  res.json({ success: true });
+route('post', '/api/twilio/status', async (req, res) => {
+  try {
+    const dbClient = getServiceClient();
+    if (!dbClient) throw new Error('Supabase service client ontbreekt.');
+
+    const callSid = safeText(req.body?.CallSid);
+    const callStatus = safeText(req.body?.CallStatus, 'unknown');
+    const duration = Number.parseInt(req.body?.CallDuration || '0', 10) || 0;
+
+    if (!callSid) {
+      return res.json({ ok: true, ignored: true });
+    }
+
+    const endedAt = nowIso();
+
+    const { data: callSession, error: sessionError } = await dbClient
+      .from('call_sessions')
+      .select('*')
+      .eq('call_sid', callSid)
+      .maybeSingle();
+
+    if (sessionError) throw sessionError;
+
+    if (callSession) {
+      await dbClient
+        .from('call_sessions')
+        .update({
+          status: callStatus,
+          duration_seconds: duration,
+          ended_at: ['completed', 'canceled', 'failed', 'busy', 'no-answer'].includes(callStatus)
+            ? endedAt
+            : null,
+          updated_at: endedAt
+        })
+        .eq('id', callSession.id);
+
+      if (duration > 0) {
+        const billedMinutes = Math.ceil(duration / 60);
+        await upsertUsage(dbClient, {
+          assistant_id: callSession.assistant_id,
+          user_id: callSession.user_id,
+          usage_type: 'call_minutes',
+          quantity: billedMinutes,
+          unit: 'minute',
+          amount_eur: billedMinutes * 0.2,
+          metadata: {
+            callSid,
+            durationSeconds: duration
+          },
+          occurred_at: endedAt
+        });
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Twilio /status fout:', error);
+    res.status(500).json({ error: error?.message || 'Status update mislukt.' });
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
 });
 
 app.listen(PORT, () => {
-  console.log('\n=================================================');
-  console.log(`🚀 AI Hub Backend draait op: http://localhost:${PORT}`);
-  console.log('=================================================\n');
+  console.log('=================================================');
+  console.log(`AI Hub Call Backend draait op: http://localhost:${PORT}`);
+  console.log('=================================================');
 });

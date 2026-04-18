@@ -1,17 +1,25 @@
-# AI Hub
+# AI Hub (Call-Only MVP 2.0)
 
-Frontend (Vite/React) + backend (Express + whatsapp-web.js) + Supabase opslag.
+Call-only SaaS voor AI telefoon-assistenten.
+
+Stack:
+- Frontend: Vite + React
+- Backend: Express (API layer)
+- Data: Supabase
+- Voice/AI: OpenAI + ElevenLabs
+- Telephony: Twilio
+
+WhatsApp is volledig uit scope gehaald.
 
 ## 1) Supabase SQL
 
-Run deze 2 scripts in je Supabase SQL Editor:
+Run in Supabase SQL Editor:
 
-- `server/sql/ai_settings_migration.sql`
-- `server/sql/whatsapp_sync_migration.sql`
+- `server/sql/call_assistant_migration.sql`
 
 ## 2) Lokale run
 
-Terminal 1:
+Terminal 1 (backend):
 
 ```bash
 cd server
@@ -19,48 +27,60 @@ npm install
 npm run dev
 ```
 
-Terminal 2:
+Terminal 2 (frontend):
 
 ```bash
 npm install
 npm run dev
 ```
 
-## 3) Vereiste env vars
+## 3) Environment variables
 
-`server/.env`:
+### Backend (`server/.env`)
 
+Verplicht:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (sterk aangeraden)
+
+Aanbevolen voor AI/voice:
 - `OPENAI_API_KEY`
+- `ELEVENLABS_API_KEY`
+
+Voor live telefonie:
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
-- `PORT` (optioneel, default `3001`)
-- `WWEBJS_DATA_PATH` (optioneel, pad voor persistente WhatsApp sessiedata)
 
-Root `.env` (frontend build):
+Overig:
+- `PORT` (default `3001`)
+- `PUBLIC_API_BASE_URL` (bijv. `https://jouw-backend.onrender.com`)
+- `ADMIN_APPROVAL_KEY` (voor endpoint `/api/admin/approve-payment`)
+- `ALLOW_SIMULATED_PROVISIONING=true` (default; zet op `false` als je alleen echte Twilio live provisioning wilt)
+
+### Frontend (root `.env`)
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `VITE_API_BASE_URL` (in productie: URL van je backend, bv `https://api-jouwdomein.com`)
+- `VITE_API_BASE_URL` (productie: je backend URL)
 
-## 4) Hosting uitleg (belangrijk)
+## 4) Deploy
 
-Netlify host alleen de frontend.  
-De WhatsApp backend kan niet betrouwbaar op Netlify Functions draaien (persistente browser/sessie nodig).
+- Frontend: Netlify
+- Backend: Render (of Railway/Fly)
 
-Dus productie-opzet:
+Belangrijk: Netlify host alleen de frontend. De API draait apart.
 
-1. Backend deployen op een persistente host (bijv. Render/Railway/VPS).
-2. Frontend deployen op Netlify.
-3. In Netlify env var zetten: `VITE_API_BASE_URL=https://<jouw-backend-url>`.
-4. Redeploy frontend.
+## 5) Kernfeatures MVP 2.0
 
-## 5) GitHub
+- Wizard onboarding (bedrijf, voice, nummer, plan)
+- Web call test in browser met states: Listening / Thinking / Speaking / Idle
+- Factuuraanvraagflow (`invoice_sent`)
+- Admin approval endpoint (`paid_approved`)
+- Auto provisioning endpoint naar `live` (Twilio of simulatie)
+- Usage summary met inbegrepen limieten + overage indicatie
+
+## 6) GitHub
 
 ```bash
 git push origin main
 ```
-
-Repo: `https://github.com/opslagbijjou-creator/ai-hub`
