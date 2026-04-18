@@ -329,6 +329,65 @@
   flex-wrap: wrap;
 }
 
+.commerce-panel {
+  padding: 1.2rem;
+  margin-bottom: 1.4rem;
+}
+
+.commerce-panel-header {
+  margin-bottom: 0.9rem;
+}
+
+.commerce-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.commerce-connect,
+.commerce-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.commerce-connect label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.commerce-integration-item {
+  padding: 0.75rem 0.8rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+}
+
+.commerce-integration-item .btn-secondary {
+  width: fit-content;
+  margin-top: 0.2rem;
+}
+
+.commerce-lookup-box {
+  margin-top: 0.45rem;
+  padding: 0.75rem 0.8rem;
+}
+
+.commerce-lookup-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.commerce-lookup-result {
+  margin-top: 0.65rem;
+  padding: 0.6rem 0.7rem;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -427,6 +486,10 @@
   .assistant-actions .btn-secondary {
     flex: 1;
     min-width: 140px;
+  }
+
+  .commerce-grid {
+    grid-template-columns: 1fr;
   }
 
   .settings-modal {

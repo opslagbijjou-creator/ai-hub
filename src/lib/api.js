@@ -13,7 +13,7 @@ export const API_BASE = rawApiBase || supabaseFunctionBase || (isLocalhost ? 'ht
 export const hasApiBaseConfig = Boolean(API_BASE);
 export const apiConfigMessage =
   hasSupabaseConfig
-    ? 'API configuratie ontbreekt. Zet VITE_API_BASE_URL of deploy Supabase function `call-api`.'
+    ? 'API configuratie ontbreekt. Deploy Supabase function `call-api` of zet VITE_API_BASE_URL naar een eigen API.'
     : supabaseConfigMessage;
 
 if (!hasApiBaseConfig && typeof window !== 'undefined') {

@@ -334,6 +334,7 @@ function buildAssistantPrompt(
     "- Geef korte, natuurlijke antwoorden.",
     "- Stel 1 vervolgvraag als informatie ontbreekt.",
     "- Bevestig belangrijke details hardop (naam, datum, tijd).",
+    "- Bij vragen over orderstatus: vraag ordernummer + e-mailadres en gebruik de gekoppelde webshop-integratie.",
     "- Als iets onbekend is, zeg dat eerlijk en bied een terugbelnotitie aan.",
     "- Spreek standaard Nederlands, tenzij de beller duidelijk een andere taal gebruikt.",
   ].join("\n");
@@ -527,6 +528,323 @@ async function fetchTwilioOwnedNumbers() {
   } catch {
     return [];
   }
+}
+
+function normalizeProvider(value: unknown) {
+  const provider = String(value || "").trim().toLowerCase();
+  if (["shopify", "prestashop", "woocommerce"].includes(provider)) return provider;
+  return "";
+}
+
+function normalizeStoreUrl(value: unknown) {
+  const raw = safeText(value);
+  if (!raw) return "";
+
+  let normalized = raw;
+  if (!/^https?:\/\//i.test(normalized)) {
+    normalized = `https://${normalized}`;
+  }
+
+  try {
+    const url = new URL(normalized);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return "";
+  }
+}
+
+function normalizeOrderReference(value: unknown) {
+  return safeText(value).replace(/^#/, "");
+}
+
+function sanitizeIntegration(integration: Record<string, any>) {
+  return {
+    id: integration.id,
+    provider: integration.provider,
+    status: integration.status,
+    storeUrl: integration.store_url,
+    hasAccessToken: Boolean(integration.access_token),
+    hasApiKey: Boolean(integration.api_key),
+    lastSyncAt: integration.last_sync_at || null,
+    updatedAt: integration.updated_at || null,
+  };
+}
+
+async function fetchIntegrationsForAssistant(dbClient: any, assistantId: string) {
+  const { data, error } = await dbClient
+    .from("commerce_integrations")
+    .select("*")
+    .eq("assistant_id", assistantId)
+    .order("provider", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+async function fetchConnectedIntegration(
+  dbClient: any,
+  assistantId: string,
+  provider: string,
+) {
+  const { data, error } = await dbClient
+    .from("commerce_integrations")
+    .select("*")
+    .eq("assistant_id", assistantId)
+    .eq("provider", provider)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function formatLookupResult(result: Record<string, any>) {
+  return {
+    found: true,
+    provider: result.provider,
+    orderReference: result.orderReference,
+    status: result.status || "Onbekend",
+    paymentStatus: result.paymentStatus || null,
+    customerEmail: result.customerEmail || null,
+    totalAmount: result.totalAmount || null,
+    currency: result.currency || null,
+    source: result.source || null,
+    raw: result.raw || null,
+  };
+}
+
+async function lookupShopifyOrderStatus(integration: Record<string, any>, params: Record<string, any>) {
+  const storeUrl = normalizeStoreUrl(integration.store_url || integration.storeUrl);
+  const accessToken = safeText(integration.access_token || integration.accessToken);
+  const orderReference = normalizeOrderReference(params.orderReference || params.orderNumber || params.reference);
+  const email = safeText(params.email).toLowerCase();
+
+  if (!storeUrl || !accessToken || !orderReference) {
+    return { found: false, error: "Shopify configuratie of orderreferentie ontbreekt." };
+  }
+
+  const graphqlQuery = `
+    query OrderLookup($query: String!) {
+      orders(first: 1, query: $query, sortKey: CREATED_AT, reverse: true) {
+        edges {
+          node {
+            name
+            createdAt
+            displayFulfillmentStatus
+            displayFinancialStatus
+            customer {
+              email
+            }
+            currentTotalPriceSet {
+              shopMoney {
+                amount
+                currencyCode
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const baseOrderRef = orderReference.startsWith("#") ? orderReference : `#${orderReference}`;
+  const candidateQueries = [
+    `${email ? `email:${email} ` : ""}name:${baseOrderRef}`,
+    `${email ? `email:${email} ` : ""}name:${orderReference}`,
+  ];
+
+  for (const searchQuery of candidateQueries) {
+    const response = await fetch(`${storeUrl}/admin/api/2024-10/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+      body: JSON.stringify({
+        query: graphqlQuery,
+        variables: { query: searchQuery.trim() },
+      }),
+    });
+
+    if (!response.ok) {
+      const reason = await response.text();
+      return { found: false, error: `Shopify request mislukt: ${reason.slice(0, 180)}` };
+    }
+
+    const payload = await response.json();
+    const edges = payload?.data?.orders?.edges || [];
+    if (!Array.isArray(edges) || edges.length === 0) {
+      continue;
+    }
+
+    const node = edges[0]?.node;
+    if (!node) continue;
+
+    return formatLookupResult({
+      provider: "shopify",
+      orderReference: node.name || baseOrderRef,
+      status: node.displayFulfillmentStatus || "Onbekend",
+      paymentStatus: node.displayFinancialStatus || null,
+      customerEmail: node?.customer?.email || email || null,
+      totalAmount: node?.currentTotalPriceSet?.shopMoney?.amount || null,
+      currency: node?.currentTotalPriceSet?.shopMoney?.currencyCode || null,
+      source: storeUrl,
+      raw: node,
+    });
+  }
+
+  return { found: false, notFound: true, provider: "shopify", orderReference: baseOrderRef };
+}
+
+async function lookupPrestashopOrderStatus(integration: Record<string, any>, params: Record<string, any>) {
+  const storeUrl = normalizeStoreUrl(integration.store_url || integration.storeUrl);
+  const apiKey = safeText(integration.api_key || integration.apiKey);
+  const orderReference = normalizeOrderReference(params.orderReference || params.orderNumber || params.reference);
+
+  if (!storeUrl || !apiKey || !orderReference) {
+    return { found: false, error: "PrestaShop configuratie of orderreferentie ontbreekt." };
+  }
+
+  const basic = btoa(`${apiKey}:`);
+  const url =
+    `${storeUrl}/api/orders?output_format=JSON&display=full&filter[reference]=` +
+    encodeURIComponent(`[${orderReference}]`);
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Basic ${basic}`,
+    },
+  });
+
+  if (!response.ok) {
+    const reason = await response.text();
+    return { found: false, error: `PrestaShop request mislukt: ${reason.slice(0, 180)}` };
+  }
+
+  const payload = await response.json();
+  const rawOrders = payload?.orders;
+  const orders = Array.isArray(rawOrders)
+    ? rawOrders
+    : (rawOrders && typeof rawOrders === "object" ? Object.values(rawOrders) : []);
+
+  if (!orders?.length) {
+    return { found: false, notFound: true, provider: "prestashop", orderReference };
+  }
+
+  const order = orders[0] as Record<string, any>;
+
+  return formatLookupResult({
+    provider: "prestashop",
+    orderReference: order.reference || orderReference,
+    status: order.current_state || order.current_state_name || "Onbekend",
+    paymentStatus: order.payment || null,
+    customerEmail: null,
+    totalAmount: order.total_paid || order.total_paid_tax_incl || null,
+    currency: order.id_currency || null,
+    source: storeUrl,
+    raw: order,
+  });
+}
+
+async function lookupOrderStatus(
+  dbClient: any,
+  assistantId: string,
+  params: Record<string, any>,
+) {
+  const provider = normalizeProvider(params.provider);
+  const orderReference = normalizeOrderReference(params.orderReference || params.orderNumber || params.reference);
+  const email = safeText(params.email).toLowerCase();
+
+  if (!orderReference) {
+    return { found: false, error: "orderReference is verplicht." };
+  }
+
+  const integrations = provider
+    ? [await fetchConnectedIntegration(dbClient, assistantId, provider)].filter(Boolean)
+    : (await fetchIntegrationsForAssistant(dbClient, assistantId)).filter((entry: any) => entry.status === "connected");
+
+  if (!integrations.length) {
+    return {
+      found: false,
+      error: provider
+        ? `Geen actieve ${provider} koppeling gevonden.`
+        : "Geen actieve webshop koppeling gevonden.",
+    };
+  }
+
+  let lastError = "";
+  for (const integration of integrations) {
+    const currentProvider = normalizeProvider(integration.provider);
+    if (!currentProvider) continue;
+
+    try {
+      if (currentProvider === "shopify") {
+        const result = await lookupShopifyOrderStatus(integration, { orderReference, email });
+        if (result.found || result.notFound) return result;
+        lastError = result.error || lastError;
+      } else if (currentProvider === "prestashop") {
+        const result = await lookupPrestashopOrderStatus(integration, { orderReference, email });
+        if (result.found || result.notFound) return result;
+        lastError = result.error || lastError;
+      } else {
+        lastError = `Provider ${currentProvider} wordt nog niet ondersteund voor orderstatus lookup.`;
+      }
+    } catch (error) {
+      lastError = (error as any)?.message || "Order lookup fout.";
+    }
+  }
+
+  if (lastError) {
+    return { found: false, error: lastError };
+  }
+
+  return { found: false, notFound: true, orderReference };
+}
+
+function detectOrderLookupIntent(text: string) {
+  const normalized = safeText(text);
+  if (!normalized) return null;
+
+  const mentionsOrder = /\b(bestelling|order|tracking|pakket|levering|status)\b/i.test(normalized);
+  if (!mentionsOrder) return null;
+
+  const emailMatch = normalized.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  const hashRef = normalized.match(/#([A-Za-z0-9_-]{3,})/);
+  const namedRef = normalized.match(/\b(order|bestelling)(nummer|nr|id)?[:\s-]*([A-Za-z0-9_-]{4,})/i);
+
+  const orderReference = hashRef?.[1] || namedRef?.[3] || "";
+  if (!orderReference) return null;
+
+  const providerMatch = normalized.match(/\b(shopify|prestashop|woocommerce)\b/i);
+
+  return {
+    orderReference,
+    email: emailMatch?.[0] || "",
+    provider: providerMatch?.[1] ? providerMatch[1].toLowerCase() : "",
+  };
+}
+
+function buildOrderStatusReply(result: Record<string, any>) {
+  if (!result?.found) {
+    if (result?.notFound) {
+      return `Ik kon bestelling ${result.orderReference || ""} nog niet vinden in de gekoppelde shop. Controleer ordernummer en e-mailadres en probeer opnieuw.`;
+    }
+    return result?.error || "Ik kon de orderstatus nu niet ophalen.";
+  }
+
+  const parts = [
+    `Ik heb bestelling ${result.orderReference} gevonden via ${String(result.provider || "").toUpperCase()}.`,
+    `Status: ${result.status || "Onbekend"}.`,
+  ];
+
+  if (result.paymentStatus) {
+    parts.push(`Betaling: ${result.paymentStatus}.`);
+  }
+
+  if (result.totalAmount) {
+    const currencySuffix = result.currency ? ` ${result.currency}` : "";
+    parts.push(`Totaal: ${result.totalAmount}${currencySuffix}.`);
+  }
+
+  return parts.join(" ");
 }
 
 async function runProvisioningJob(params: { dbClient: any; jobId: string }) {
@@ -768,6 +1086,8 @@ async function handleAssistantState(user: any, accessToken: string) {
     const profile = await fetchProfile(dbClient, assistant.id);
     const voice = await fetchSelectedVoice(dbClient, assistant.id);
     const number = await fetchSelectedNumber(dbClient, assistant.id);
+    const integrationsRaw = await fetchIntegrationsForAssistant(dbClient, assistant.id);
+    const integrations = integrationsRaw.map((entry: Record<string, any>) => sanitizeIntegration(entry));
 
     const { data: invoice } = await dbClient
       .from("invoices")
@@ -801,6 +1121,7 @@ async function handleAssistantState(user: any, accessToken: string) {
       latestInvoice: invoice || null,
       latestProvisioningJob: provisioningJob || null,
       subscription: subscription || null,
+      integrations,
       plan: {
         ...selectedPlan,
         metrics: estimatePlanMetrics(selectedPlan),
@@ -870,12 +1191,21 @@ async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
       assistant.prompt || buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
 
     const started = Date.now();
-    const assistantText = await generateReply({
-      systemPrompt,
-      history,
-      userText: inputText,
-      fallbackCompanyName: profile?.company_name || assistant.display_name || "jouw bedrijf",
-    });
+    const orderIntent = detectOrderLookupIntent(inputText);
+    let orderLookupResult: Record<string, any> | null = null;
+
+    if (orderIntent) {
+      orderLookupResult = await lookupOrderStatus(dbClient, assistant.id, orderIntent);
+    }
+
+    const assistantText = orderLookupResult
+      ? buildOrderStatusReply(orderLookupResult)
+      : await generateReply({
+        systemPrompt,
+        history,
+        userText: inputText,
+        fallbackCompanyName: profile?.company_name || assistant.display_name || "jouw bedrijf",
+      });
     const latencyMs = Date.now() - started;
     const audioDataUrl = await createWebCallAudio(assistantText, selectedVoice || {});
 
@@ -905,7 +1235,14 @@ async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
         audio_data_url: audioDataUrl,
         debug_steps: {
           phases: ["listening", "thinking", "speaking"],
-          model: openai ? OPENAI_MODEL : "fallback",
+          model: orderLookupResult ? "commerce_lookup" : openai ? OPENAI_MODEL : "fallback",
+          commerceLookup: orderLookupResult
+            ? {
+              attempted: true,
+              found: Boolean(orderLookupResult.found),
+              provider: orderLookupResult.provider || null,
+            }
+            : null,
         },
         created_at: nowIso(),
       },
@@ -939,6 +1276,7 @@ async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
         { key: "thinking", label: "AI denkt na", done: true },
         { key: "speaking", label: "AI spreekt", done: true },
       ],
+      commerceLookup: orderLookupResult || null,
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -1191,6 +1529,165 @@ async function handleUsageSummary(user: any, accessToken: string) {
   }
 }
 
+async function handleIntegrationList(user: any, accessToken: string) {
+  try {
+    const dbClient = getDbClient(accessToken);
+    const assistant = await ensureAssistant(dbClient, user.id);
+    const rows = await fetchIntegrationsForAssistant(dbClient, assistant.id);
+    return json({
+      success: true,
+      integrations: rows.map((entry: Record<string, any>) => sanitizeIntegration(entry)),
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleIntegrationConnect(req: Request, user: any, accessToken: string) {
+  try {
+    const dbClient = getDbClient(accessToken);
+    const assistant = await ensureAssistant(dbClient, user.id);
+    const body = await parseBody(req) as Record<string, unknown>;
+
+    const provider = normalizeProvider(body.provider);
+    const storeUrl = normalizeStoreUrl(body.storeUrl || body.store_url);
+    const accessTokenValue = safeText(body.accessToken || body.access_token);
+    const apiKey = safeText(body.apiKey || body.api_key);
+    const apiSecret = safeText(body.apiSecret || body.api_secret);
+    const webhookSecret = safeText(body.webhookSecret || body.webhook_secret);
+
+    if (!provider) {
+      return errorJson("provider is verplicht (shopify, prestashop, woocommerce).", 400);
+    }
+    if (!storeUrl) {
+      return errorJson("storeUrl is verplicht.", 400);
+    }
+
+    if (provider === "shopify" && !accessTokenValue) {
+      return errorJson("Voor Shopify is accessToken verplicht.", 400);
+    }
+    if (provider === "prestashop" && !apiKey) {
+      return errorJson("Voor PrestaShop is apiKey verplicht.", 400);
+    }
+
+    const { data: saved, error } = await dbClient
+      .from("commerce_integrations")
+      .upsert(
+        {
+          assistant_id: assistant.id,
+          user_id: user.id,
+          provider,
+          status: "connected",
+          store_url: storeUrl,
+          access_token: accessTokenValue || null,
+          api_key: apiKey || null,
+          api_secret: apiSecret || null,
+          webhook_secret: webhookSecret || null,
+          metadata: {},
+          updated_at: nowIso(),
+        },
+        { onConflict: "assistant_id,provider" },
+      )
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    return json({
+      success: true,
+      integration: sanitizeIntegration(saved),
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleIntegrationDisconnect(req: Request, user: any, accessToken: string) {
+  try {
+    const dbClient = getDbClient(accessToken);
+    const assistant = await ensureAssistant(dbClient, user.id);
+    const body = await parseBody(req) as Record<string, unknown>;
+    const provider = normalizeProvider(body.provider);
+
+    if (!provider) {
+      return errorJson("provider is verplicht.", 400);
+    }
+
+    const { data: row, error } = await dbClient
+      .from("commerce_integrations")
+      .update({
+        status: "disconnected",
+        updated_at: nowIso(),
+      })
+      .eq("assistant_id", assistant.id)
+      .eq("provider", provider)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!row) {
+      return errorJson(`Geen ${provider} koppeling gevonden om los te koppelen.`, 404);
+    }
+
+    return json({
+      success: true,
+      integration: sanitizeIntegration(row),
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleIntegrationOrderStatus(req: Request, user: any, accessToken: string) {
+  try {
+    const dbClient = getDbClient(accessToken);
+    const assistant = await ensureAssistant(dbClient, user.id);
+    const body = await parseBody(req) as Record<string, unknown>;
+
+    const lookup = await lookupOrderStatus(dbClient, assistant.id, {
+      provider: body.provider,
+      orderReference: body.orderReference || body.orderNumber || body.reference,
+      email: body.email,
+    });
+
+    if (lookup.error) {
+      return errorJson(lookup.error, 400);
+    }
+
+    if (!lookup.found) {
+      return json({
+        success: true,
+        found: false,
+        orderReference: lookup.orderReference || null,
+        message: `Geen bestelling gevonden voor ${lookup.orderReference || "de opgegeven referentie"}.`,
+      });
+    }
+
+    await upsertUsage(dbClient, {
+      assistant_id: assistant.id,
+      user_id: user.id,
+      usage_type: "order_status_lookup",
+      quantity: 1,
+      unit: "event",
+      amount_eur: 0,
+      metadata: {
+        provider: lookup.provider,
+        orderReference: lookup.orderReference,
+      },
+      occurred_at: nowIso(),
+    });
+
+    return json({
+      success: true,
+      found: true,
+      order: lookup,
+      assistantText: buildOrderStatusReply(lookup),
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1240,6 +1737,12 @@ Deno.serve(async (req) => {
       return await handleAssistantState(auth.user, auth.token);
     }
 
+    if (method === "GET" && path === "/integrations/list") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleIntegrationList(auth.user, auth.token);
+    }
+
     if (method === "POST" && path === "/onboarding/save") {
       const auth = await requireUser(req);
       if (auth.error) return auth.error;
@@ -1269,6 +1772,24 @@ Deno.serve(async (req) => {
       const auth = await requireUser(req);
       if (auth.error) return auth.error;
       return await handleInvoiceRequest(req, auth.user, auth.token);
+    }
+
+    if (method === "POST" && path === "/integrations/connect") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleIntegrationConnect(req, auth.user, auth.token);
+    }
+
+    if (method === "POST" && path === "/integrations/disconnect") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleIntegrationDisconnect(req, auth.user, auth.token);
+    }
+
+    if (method === "POST" && path === "/integrations/order-status") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleIntegrationOrderStatus(req, auth.user, auth.token);
     }
 
     if (method === "POST" && path === "/admin/approve-payment") {

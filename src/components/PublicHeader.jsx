@@ -6,9 +6,9 @@ const PublicHeader = ({ active = 'home' }) => {
   const navigate = useNavigate();
 
   const navItems = [
-    { key: 'info', label: 'Info', path: '/info' },
-    { key: 'pricing', label: 'Pricing', path: '/pricing' },
-    { key: 'dashboard', label: 'Dashboard', path: '/login' }
+    { key: 'info', label: 'Werking', path: '/info' },
+    { key: 'pricing', label: 'Prijzen', path: '/pricing' },
+    { key: 'privacy', label: 'Privacy', path: '/privacy' }
   ];
 
   return (
@@ -37,8 +37,8 @@ const PublicHeader = ({ active = 'home' }) => {
           <button className="btn-secondary" onClick={() => navigate('/login')}>
             Inloggen
           </button>
-          <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
-            Start setup <ArrowRight size={16} />
+          <button className="btn-primary" onClick={() => navigate('/login')}>
+            Gratis starten <ArrowRight size={16} />
           </button>
         </div>
       </nav>
@@ -48,13 +48,13 @@ const PublicHeader = ({ active = 'home' }) => {
           Home
         </button>
         <button className={active === 'info' ? 'active-link' : ''} onClick={() => navigate('/info')}>
-          Info
+          Werking
         </button>
         <button className={active === 'pricing' ? 'active-link' : ''} onClick={() => navigate('/pricing')}>
-          Pricing
+          Prijzen
         </button>
-        <button className={active === 'dashboard' ? 'active-link' : ''} onClick={() => navigate('/login')}>
-          Dashboard
+        <button className={active === 'privacy' ? 'active-link' : ''} onClick={() => navigate('/privacy')}>
+          Privacy
         </button>
       </div>
     </div>

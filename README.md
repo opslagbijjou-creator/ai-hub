@@ -53,7 +53,7 @@ In Supabase -> Edge Functions -> Secrets:
 Deploy de Edge Function:
 
 ```bash
-supabase functions deploy call-api --project-ref <project-ref>
+npx supabase@latest functions deploy call-api --project-ref <project-ref> --no-verify-jwt
 ```
 
 of via dashboard/CI.
@@ -83,13 +83,22 @@ of via dashboard/CI.
 
 - Wizard onboarding (bedrijf, voice, nummer, plan)
 - Web call test in browser met states: Listening / Thinking / Speaking / Idle
+- Webshop integraties (Shopify + PrestaShop) met orderstatus lookup endpoint
 - Factuuraanvraagflow (`invoice_sent`)
 - Admin approval endpoint (`paid_approved`)
 - Auto provisioning endpoint naar `live` (Twilio of simulatie)
 - Usage summary met inbegrepen limieten + overage indicatie
-- Publieke pagina's: `/`, `/pricing`, `/info`
+- Publieke pagina's: `/`, `/pricing`, `/info`, `/privacy`, `/compliance`, `/terms`
 
-## 6) Pakketten (huidig model)
+## 6) Productpositionering
+
+- Gratis bouwen en testen in de browser
+- Pas betalen bij live activatie van nummer en telefonie
+- Call-only scope, geen WhatsApp
+- Supabase-only infrastructuur voor auth, data en serverless logica
+- Rustige publieke site met privacy- en compliance basis
+
+## 7) Pakketten (huidig model)
 
 - `Launch` – €299/mnd – 180 min – overage €1.15/min
 - `Growth` – €499/mnd – 420 min – overage €1.05/min
@@ -98,7 +107,7 @@ of via dashboard/CI.
 
 De pakketten zijn afgestemd op oplopende capaciteit per pakket en een voorspelbaar kostenmodel op basis van de assumptions in `src/lib/pricing.js`.
 
-## 7) GitHub
+## 8) GitHub
 
 ```bash
 git push origin main

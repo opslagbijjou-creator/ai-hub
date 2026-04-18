@@ -89,6 +89,29 @@ create table if not exists public.assistant_numbers (
 create index if not exists assistant_numbers_selected_idx
   on public.assistant_numbers (assistant_id, selected, updated_at desc);
 
+create table if not exists public.commerce_integrations (
+  id uuid primary key default gen_random_uuid(),
+  assistant_id uuid not null references public.assistants (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  provider text not null,
+  status text not null default 'connected',
+  store_url text not null,
+  access_token text,
+  api_key text,
+  api_secret text,
+  webhook_secret text,
+  metadata jsonb not null default '{}'::jsonb,
+  last_sync_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint commerce_integrations_provider_check check (provider in ('shopify', 'prestashop', 'woocommerce')),
+  constraint commerce_integrations_status_check check (status in ('connected', 'disconnected', 'error')),
+  unique (assistant_id, provider)
+);
+
+create index if not exists commerce_integrations_assistant_idx
+  on public.commerce_integrations (assistant_id, status, updated_at desc);
+
 create table if not exists public.web_test_sessions (
   id uuid primary key default gen_random_uuid(),
   assistant_id uuid not null references public.assistants (id) on delete cascade,
@@ -254,6 +277,7 @@ alter table public.assistants enable row level security;
 alter table public.assistant_profiles enable row level security;
 alter table public.assistant_voices enable row level security;
 alter table public.assistant_numbers enable row level security;
+alter table public.commerce_integrations enable row level security;
 alter table public.web_test_sessions enable row level security;
 alter table public.web_test_turns enable row level security;
 alter table public.call_sessions enable row level security;
@@ -291,6 +315,13 @@ drop policy if exists "assistant_numbers_update_own" on public.assistant_numbers
 create policy "assistant_numbers_select_own" on public.assistant_numbers for select using (auth.uid() = user_id);
 create policy "assistant_numbers_insert_own" on public.assistant_numbers for insert with check (auth.uid() = user_id);
 create policy "assistant_numbers_update_own" on public.assistant_numbers for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "commerce_integrations_select_own" on public.commerce_integrations;
+drop policy if exists "commerce_integrations_insert_own" on public.commerce_integrations;
+drop policy if exists "commerce_integrations_update_own" on public.commerce_integrations;
+create policy "commerce_integrations_select_own" on public.commerce_integrations for select using (auth.uid() = user_id);
+create policy "commerce_integrations_insert_own" on public.commerce_integrations for insert with check (auth.uid() = user_id);
+create policy "commerce_integrations_update_own" on public.commerce_integrations for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "web_test_sessions_select_own" on public.web_test_sessions;
 drop policy if exists "web_test_sessions_insert_own" on public.web_test_sessions;

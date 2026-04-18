@@ -4,10 +4,15 @@ import {
   Activity,
   BookOpen,
   CreditCard,
+  Link2,
+  PackageSearch,
   Phone,
   PhoneCall,
+  PlugZap,
   RefreshCcw,
   Settings,
+  ShoppingCart,
+  Unplug,
   UploadCloud,
   X
 } from 'lucide-react';
@@ -136,6 +141,22 @@ const Overview = () => {
   const [saveLoading, setSaveLoading] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceNotice, setInvoiceNotice] = useState('');
+  const [integrations, setIntegrations] = useState([]);
+  const [integrationDraft, setIntegrationDraft] = useState({
+    provider: 'shopify',
+    storeUrl: '',
+    accessToken: '',
+    apiKey: ''
+  });
+  const [integrationSaving, setIntegrationSaving] = useState(false);
+  const [integrationNotice, setIntegrationNotice] = useState('');
+  const [orderLookupDraft, setOrderLookupDraft] = useState({
+    provider: '',
+    orderReference: '',
+    email: ''
+  });
+  const [orderLookupLoading, setOrderLookupLoading] = useState(false);
+  const [orderLookupResult, setOrderLookupResult] = useState(null);
 
   const authFetch = useCallback(async (path, options = {}) => {
     const {
@@ -201,6 +222,7 @@ const Overview = () => {
 
       setAssistantState(statePayload);
       setUsageSummary(usagePayload);
+      setIntegrations(Array.isArray(statePayload?.integrations) ? statePayload.integrations : []);
       hydrateContextFromState(statePayload);
 
       setSettingsDraft({
@@ -276,11 +298,109 @@ const Overview = () => {
     }
   };
 
+  const connectIntegration = async () => {
+    setIntegrationSaving(true);
+    setIntegrationNotice('');
+
+    try {
+      const payload = {
+        provider: integrationDraft.provider,
+        storeUrl: integrationDraft.storeUrl
+      };
+
+      if (integrationDraft.provider === 'shopify') {
+        payload.accessToken = integrationDraft.accessToken;
+      }
+
+      if (integrationDraft.provider === 'prestashop') {
+        payload.apiKey = integrationDraft.apiKey;
+      }
+
+      const response = await authFetch('/api/integrations/connect', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Koppeling opslaan mislukt.');
+      }
+
+      setIntegrationNotice(`${integrationDraft.provider} is gekoppeld.`);
+      setIntegrationDraft((prev) => ({
+        ...prev,
+        accessToken: '',
+        apiKey: ''
+      }));
+      await loadData();
+    } catch (connectError) {
+      setIntegrationNotice(connectError?.message || 'Kon webshop koppeling niet opslaan.');
+    } finally {
+      setIntegrationSaving(false);
+    }
+  };
+
+  const disconnectIntegration = async (provider) => {
+    setIntegrationSaving(true);
+    setIntegrationNotice('');
+
+    try {
+      const response = await authFetch('/api/integrations/disconnect', {
+        method: 'POST',
+        body: JSON.stringify({ provider })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Loskoppelen mislukt.');
+      }
+
+      setIntegrationNotice(`${provider} is losgekoppeld.`);
+      await loadData();
+    } catch (disconnectError) {
+      setIntegrationNotice(disconnectError?.message || 'Kon koppeling niet loskoppelen.');
+    } finally {
+      setIntegrationSaving(false);
+    }
+  };
+
+  const testOrderLookup = async () => {
+    setOrderLookupLoading(true);
+    setOrderLookupResult(null);
+    setIntegrationNotice('');
+
+    try {
+      const response = await authFetch('/api/integrations/order-status', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: orderLookupDraft.provider || undefined,
+          orderReference: orderLookupDraft.orderReference,
+          email: orderLookupDraft.email
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Orderstatus ophalen mislukt.');
+      }
+
+      setOrderLookupResult(data);
+    } catch (lookupError) {
+      setOrderLookupResult({
+        success: false,
+        message: lookupError?.message || 'Orderstatus ophalen mislukt.'
+      });
+    } finally {
+      setOrderLookupLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   const usage = usageSummary?.usage;
+  const connectedIntegrations = integrations.filter((entry) => entry.status === 'connected');
 
   const stats = useMemo(
     () => [
@@ -403,6 +523,188 @@ const Overview = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="glass-panel commerce-panel">
+        <div className="commerce-panel-header">
+          <h3 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
+            <ShoppingCart size={18} /> Webshop koppelingen
+          </h3>
+          <p className="text-muted">
+            Koppel je shop zodat de assistent orderstatus kan ophalen tijdens gesprekken.
+          </p>
+        </div>
+
+        {integrationNotice && (
+          <div className="glass-panel" style={{ padding: '0.7rem 0.8rem', marginBottom: '0.85rem' }}>
+            {integrationNotice}
+          </div>
+        )}
+
+        <div className="commerce-grid">
+          <div className="commerce-connect">
+            <label>
+              Provider
+              <select
+                className="glass-input"
+                value={integrationDraft.provider}
+                onChange={(event) =>
+                  setIntegrationDraft((prev) => ({
+                    ...prev,
+                    provider: event.target.value
+                  }))}
+              >
+                <option value="shopify">Shopify</option>
+                <option value="prestashop">PrestaShop</option>
+              </select>
+            </label>
+
+            <label>
+              Store URL
+              <input
+                type="text"
+                className="glass-input"
+                placeholder="https://jouwshop.myshopify.com"
+                value={integrationDraft.storeUrl}
+                onChange={(event) =>
+                  setIntegrationDraft((prev) => ({
+                    ...prev,
+                    storeUrl: event.target.value
+                  }))}
+              />
+            </label>
+
+            {integrationDraft.provider === 'shopify' && (
+              <label>
+                Shopify Admin Access Token
+                <input
+                  type="password"
+                  className="glass-input"
+                  placeholder="shpat_..."
+                  value={integrationDraft.accessToken}
+                  onChange={(event) =>
+                    setIntegrationDraft((prev) => ({
+                      ...prev,
+                      accessToken: event.target.value
+                    }))}
+                />
+              </label>
+            )}
+
+            {integrationDraft.provider === 'prestashop' && (
+              <label>
+                PrestaShop API Key
+                <input
+                  type="password"
+                  className="glass-input"
+                  placeholder="API sleutel"
+                  value={integrationDraft.apiKey}
+                  onChange={(event) =>
+                    setIntegrationDraft((prev) => ({
+                      ...prev,
+                      apiKey: event.target.value
+                    }))}
+                />
+              </label>
+            )}
+
+            <button
+              className="btn-primary"
+              disabled={integrationSaving || !integrationDraft.storeUrl.trim()}
+              onClick={connectIntegration}
+            >
+              <PlugZap size={15} />
+              {integrationSaving ? 'Opslaan...' : 'Koppeling opslaan'}
+            </button>
+          </div>
+
+          <div className="commerce-status">
+            <h4 style={{ marginBottom: '0.55rem' }}>Actieve koppelingen</h4>
+
+            {connectedIntegrations.length === 0 && (
+              <p className="text-muted">Nog geen actieve webshop koppeling.</p>
+            )}
+
+            {connectedIntegrations.map((integration) => (
+              <div key={integration.id} className="glass-panel commerce-integration-item">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <Link2 size={15} />
+                  <strong>{String(integration.provider || '').toUpperCase()}</strong>
+                </div>
+                <span className="text-muted">{integration.storeUrl}</span>
+                <button
+                  className="btn-secondary"
+                  onClick={() => disconnectIntegration(integration.provider)}
+                  disabled={integrationSaving}
+                >
+                  <Unplug size={14} /> Loskoppelen
+                </button>
+              </div>
+            ))}
+
+            <div className="glass-panel commerce-lookup-box">
+              <h4 style={{ marginBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <PackageSearch size={16} /> Orderstatus test
+              </h4>
+
+              <div className="commerce-lookup-fields">
+                <select
+                  className="glass-input"
+                  value={orderLookupDraft.provider}
+                  onChange={(event) =>
+                    setOrderLookupDraft((prev) => ({ ...prev, provider: event.target.value }))}
+                >
+                  <option value="">Auto (eerste actieve)</option>
+                  <option value="shopify">Shopify</option>
+                  <option value="prestashop">PrestaShop</option>
+                </select>
+
+                <input
+                  type="text"
+                  className="glass-input"
+                  placeholder="Ordernummer (bijv. #1001)"
+                  value={orderLookupDraft.orderReference}
+                  onChange={(event) =>
+                    setOrderLookupDraft((prev) => ({ ...prev, orderReference: event.target.value }))}
+                />
+
+                <input
+                  type="email"
+                  className="glass-input"
+                  placeholder="Klant e-mail (optioneel)"
+                  value={orderLookupDraft.email}
+                  onChange={(event) =>
+                    setOrderLookupDraft((prev) => ({ ...prev, email: event.target.value }))}
+                />
+              </div>
+
+              <button
+                className="btn-secondary"
+                onClick={testOrderLookup}
+                disabled={orderLookupLoading || !orderLookupDraft.orderReference.trim()}
+              >
+                <RefreshCcw size={14} /> {orderLookupLoading ? 'Zoeken...' : 'Check orderstatus'}
+              </button>
+
+              {orderLookupResult && (
+                <div className="glass-panel commerce-lookup-result">
+                  {orderLookupResult?.found ? (
+                    <p>
+                      <strong>{orderLookupResult?.order?.orderReference}</strong> -
+                      {' '}
+                      {orderLookupResult?.order?.status}
+                      {orderLookupResult?.order?.paymentStatus
+                        ? ` (betaling: ${orderLookupResult.order.paymentStatus})`
+                        : ''}
+                    </p>
+                  ) : (
+                    <p>{orderLookupResult?.message || 'Geen order gevonden.'}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="chart-section glass-panel" style={{ marginBottom: 0 }}>
