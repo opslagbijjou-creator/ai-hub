@@ -1,7 +1,7 @@
-import { hasSupabaseConfig, supabaseConfigMessage } from './supabase';
+import { hasSupabaseConfig, resolvedSupabaseUrl, supabaseConfigMessage } from './supabase';
 
 const rawApiBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/$/, '');
-const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/$/, '');
+const rawSupabaseUrl = (resolvedSupabaseUrl || '').trim().replace(/\/$/, '');
 
 const isLocalhost = typeof window !== 'undefined'
   && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
