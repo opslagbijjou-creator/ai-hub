@@ -14,11 +14,33 @@ const AuthPage = () => {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
   const [animating, setAnimating] = useState(false);
+
+  const normalizeAuthError = (message) => {
+    const raw = String(message || '').trim();
+    if (!raw) return 'Inloggen is mislukt. Probeer het opnieuw.';
+
+    if (/email not confirmed/i.test(raw)) {
+      return 'Je e-mailadres is nog niet bevestigd. Open je inbox en bevestig je account eerst.';
+    }
+
+    if (/invalid login credentials/i.test(raw)) {
+      return 'Onjuiste inloggegevens. Controleer je e-mail en wachtwoord.';
+    }
+
+    if (/email address .* is invalid/i.test(raw)) {
+      return 'Gebruik een geldig e-mailadres (bijvoorbeeld geen example.com).';
+    }
+
+    return raw;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNotice('');
 
     if (!supabaseConfigured) {
       setError(supabaseConfigMessage);
@@ -33,22 +55,35 @@ const AuthPage = () => {
         if (error) throw error;
         navigate('/dashboard');
       } else {
-        const { error } = await supabase.auth.signUp({ 
-          email, 
+        const { data, error } = await supabase.auth.signUp({
+          email,
           password,
-          options: { data: { full_name: name } }
+          options: {
+            data: { full_name: name },
+            emailRedirectTo: `${window.location.origin}/login`
+          }
         });
         if (error) throw error;
-        navigate('/dashboard');
+
+        if (data?.session) {
+          navigate('/dashboard');
+          return;
+        }
+
+        setNotice('Account aangemaakt. Check je e-mail en bevestig je account, daarna kun je inloggen.');
+        setIsLogin(true);
       }
     } catch (err) {
-      setError(err.message);
+      setError(normalizeAuthError(err?.message));
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
+    setError('');
+    setNotice('');
+
     if (!supabaseConfigured) {
       setError(supabaseConfigMessage);
       return;
@@ -60,17 +95,49 @@ const AuthPage = () => {
         redirectTo: window.location.origin + '/dashboard'
       }
     });
-    if (error) setError(error.message);
+    if (error) setError(normalizeAuthError(error.message));
+  };
+
+  const handleResendConfirmation = async () => {
+    setError('');
+    setNotice('');
+
+    if (!email.trim()) {
+      setError('Vul eerst je e-mailadres in om de bevestigingsmail opnieuw te sturen.');
+      return;
+    }
+
+    setResendLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`
+        }
+      });
+
+      if (error) throw error;
+      setNotice('Nieuwe bevestigingsmail verstuurd. Controleer ook je spammap.');
+    } catch (resendError) {
+      setError(normalizeAuthError(resendError?.message));
+    } finally {
+      setResendLoading(false);
+    }
   };
 
   const toggleMode = () => {
     setAnimating(true);
     setError('');
+    setNotice('');
     setTimeout(() => {
       setIsLogin(!isLogin);
       setTimeout(() => setAnimating(false), 50);
     }, 250);
   };
+
+  const canResendConfirmation = /bevestig|confirmed/i.test(error);
 
   return (
     <div className="landing-container" style={{ justifyContent: 'center', minHeight: '100vh' }}>
@@ -139,6 +206,31 @@ const AuthPage = () => {
             <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', color: '#EF4444', fontSize: '0.85rem' }}>
               {error}
             </div>
+          )}
+
+          {notice && (
+            <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', color: '#86efac', fontSize: '0.85rem' }}>
+              {notice}
+            </div>
+          )}
+
+          {canResendConfirmation && (
+            <button
+              type="button"
+              className="auth-field"
+              onClick={handleResendConfirmation}
+              disabled={resendLoading || !supabaseConfigured}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '8px',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                color: '#86efac',
+                background: 'rgba(16, 185, 129, 0.08)'
+              }}
+            >
+              {resendLoading ? 'Bevestigingsmail versturen...' : 'Stuur bevestigingsmail opnieuw'}
+            </button>
           )}
 
           {!supabaseConfigured && (

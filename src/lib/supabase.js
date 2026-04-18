@@ -21,6 +21,7 @@ const disabledAuthClient = {
   onAuthStateChange: () => ({ data: { subscription: { unsubscribe: noopUnsubscribe } } }),
   signInWithPassword: async () => ({ data: null, error: createConfigError() }),
   signUp: async () => ({ data: null, error: createConfigError() }),
+  resend: async () => ({ data: null, error: createConfigError() }),
   signInWithOAuth: async () => ({ data: null, error: createConfigError() }),
   signOut: async () => ({ error: null })
 };
