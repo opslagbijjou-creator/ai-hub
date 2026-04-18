@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
+import { apiUrl } from '../lib/api';
 import './Dashboard.css';
 import { Activity, Database, Users, Phone, Settings, X, UploadCloud, BookOpen } from 'lucide-react';
 import WhatsAppAgent from './WhatsAppAgent';
@@ -83,7 +84,7 @@ const Overview = () => {
         throw new Error('Geen actieve sessie');
       }
 
-      const response = await fetch('http://localhost:3001/api/assistant/config', {
+      const response = await fetch(apiUrl('/api/assistant/config'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

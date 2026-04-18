@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageSquare, Settings, Send, User, Clock, Check, CheckCircle2, Loader2, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+import { API_BASE } from '../lib/api';
 
 const normalizeStatusHint = (value) => {
   const message = String(value || '');
