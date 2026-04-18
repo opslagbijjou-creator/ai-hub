@@ -1,6 +1,20 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, PhoneCall, Clock, CheckCircle, ChevronRight, Moon, Sun, UploadCloud } from 'lucide-react';
+import {
+  ArrowRight,
+  BadgeCheck,
+  BrainCircuit,
+  Clock3,
+  Headset,
+  Mic,
+  Moon,
+  PhoneCall,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+  Wallet
+} from 'lucide-react';
+import { PRICING_PLANS } from '../lib/pricing';
 import { useAppContext } from '../context/AppContext';
 import './LandingPage.css';
 
@@ -8,117 +22,201 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useAppContext();
 
+  const growthPlan = PRICING_PLANS.find((plan) => plan.key === 'plan_275') || PRICING_PLANS[1];
+
   return (
     <div className="landing-container">
-      {/* Navbar */}
+      <div className="marketing-grid"></div>
+
       <nav className="landing-nav glass-panel">
-        <div className="nav-logo">
-          <Bot className="text-gradient" size={32} />
-          <span className="text-gradient font-heading">AI Hub</span>
-        </div>
+        <button className="nav-logo" onClick={() => navigate('/')}>
+          <div className="logo-chip">
+            <Headset size={19} />
+          </div>
+          <span className="font-heading">AI Hub Voice</span>
+        </button>
+
         <div className="nav-links">
-          <a href="#hoe-het-werkt">Hoe het werkt</a>
-          <a href="#voordelen">Voordelen</a>
-          <a href="#prijzen">Prijzen</a>
+          <button onClick={() => navigate('/info')}>Info</button>
+          <button onClick={() => navigate('/pricing')}>Pricing</button>
+          <button onClick={() => navigate('/login')}>Dashboard</button>
         </div>
+
         <div className="nav-actions">
           <button className="theme-toggle-btn" onClick={toggleTheme}>
-            {theme === 'dark-mode' ? <Sun size={20} /> : <Moon size={20} />}
+            {theme === 'dark-mode' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button className="btn-secondary" onClick={() => navigate('/login')}>Inloggen</button>
-          <button className="btn-primary" onClick={() => navigate('/login')}>
-            Probeer 14 Dagen Gratis <ChevronRight size={18} />
+          <button className="btn-secondary" onClick={() => navigate('/login')}>
+            Inloggen
+          </button>
+          <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
+            Start setup <ArrowRight size={17} />
           </button>
         </div>
       </nav>
 
-      {/* Hero Section */}
       <main className="hero-section">
-        <div className="hero-content animate-fade-in">
-          <div className="badge glass-panel">✨ Binnen 1 dag live & operationeel</div>
+        <section className="hero-content animate-fade-in">
+          <div className="badge glass-panel">
+            <Sparkles size={14} /> Call-only SaaS • binnen minuten te testen
+          </div>
+
           <h1 className="hero-title">
-            De AI-Telefoonassistent<br/> Voor <span className="text-gradient">Jouw Bedrijf</span>.
+            Bouw een <span className="text-gradient">AI Bel-Assistent</span> die echt klinkt als jouw team.
           </h1>
+
           <p className="hero-subtitle">
-            Onze AI neemt 24/7 de telefoon op, beantwoordt vragen, plant afspraken en verbindt alleen door wanneer het écht nodig is. Geen gemiste omzet meer, geen overbelast team.
+            Klanten bellen, jouw AI neemt op, stelt slimme vragen en registreert alles. Eerst testen op de website,
+            daarna pas live op je nummer na betaling en provisioning.
           </p>
+
           <div className="hero-cta">
             <button className="btn-primary btn-large" onClick={() => navigate('/setup-wizard')}>
-              Maak Jouw Assistent <ChevronRight size={20} />
+              Assistent bouwen <ArrowRight size={19} />
             </button>
-            <button className="btn-secondary btn-large">
-              Plan een Demo
+            <button className="btn-secondary btn-large" onClick={() => navigate('/pricing')}>
+              Bekijk prijzen
             </button>
           </div>
-        </div>
-        
-        <div className="hero-visual animate-float">
+
+          <div className="hero-pill-row">
+            <div className="hero-pill glass-panel">
+              <PhoneCall size={15} /> Web test met microfoon
+            </div>
+            <div className="hero-pill glass-panel">
+              <BrainCircuit size={15} /> Live AI states in UI
+            </div>
+            <div className="hero-pill glass-panel">
+              <Wallet size={15} /> Marge-gedreven pricing
+            </div>
+          </div>
+        </section>
+
+        <section className="hero-visual animate-float">
           <div className="abstract-shape shape-1"></div>
           <div className="abstract-shape shape-2"></div>
+
           <div className="dashboard-preview glass-panel">
-             <div className="preview-header">
-               <div className="dots"><span></span><span></span><span></span></div>
-               <div className="preview-title">Live Call Status</div>
-             </div>
-             <div className="preview-body" style={{flexDirection: 'column', gap: '1rem'}}>
-                <div className="mock-card" style={{height: 'auto', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem'}}>
-                   <div style={{background: 'var(--primary)', borderRadius: '50%', padding: '10px'}}><PhoneCall size={24} color="white"/></div>
-                   <div>
-                     <h4 style={{marginBottom: '4px'}}>Inkomend Gesprek</h4>
-                     <p className="text-muted" style={{fontSize: '0.85rem'}}>+31 6 1234 5678</p>
-                   </div>
-                   <div style={{marginLeft: 'auto', color: '#10B981', fontWeight: 'bold', fontSize: '0.85rem'}}>Beantwoord door AI</div>
+            <div className="preview-header">
+              <div className="dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div className="preview-title">Call Studio • realtime</div>
+            </div>
+
+            <div className="preview-body stack">
+              <div className="mock-card status-card">
+                <div className="status-avatar">
+                  <Mic size={20} />
                 </div>
-                
-                <div className="mock-card" style={{height: 'auto', padding: '1rem'}}>
-                   <h4 style={{marginBottom: '0.5rem', color: 'var(--secondary)'}}>Transcriptie (Live)</h4>
-                   <p style={{fontSize: '0.85rem', lineHeight: '1.5', color: 'var(--text-muted)'}}>
-                     "Goedemiddag, u spreekt met de virtuele assistent. Hoe kan ik u helpen?"<br/><br/>
-                     <span style={{color: 'var(--text-main)'}}>"Hi, ik wil graag een afspraak maken voor morgen."</span>
-                   </p>
+                <div>
+                  <h4>Listening</h4>
+                  <p>AI luistert naar de vraag van de klant</p>
                 </div>
-             </div>
+                <div className="pulse-dot"></div>
+              </div>
+
+              <div className="mock-card timeline-card">
+                <h4>Gespreksflow</h4>
+                <ol>
+                  <li>
+                    <strong>Thinking</strong>
+                    <span>Prompt + bedrijfsdata wordt verwerkt</span>
+                  </li>
+                  <li>
+                    <strong>Speaking</strong>
+                    <span>Antwoord wordt uitgesproken met gekozen stem</span>
+                  </li>
+                  <li>
+                    <strong>Logged</strong>
+                    <span>Minuten + tasks gaan naar usage dashboard</span>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="mock-card pricing-teaser">
+                <p className="text-muted">Vanaf</p>
+                <h3>€{PRICING_PLANS[0].monthlyPriceEur}/mnd</h3>
+                <small>{growthPlan.includedMinutes} min in {growthPlan.name}</small>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
       </main>
 
-      {/* Features Section */}
-      <section id="hoe-het-werkt" className="features-section">
+      <section className="features-section" id="voordelen">
         <div className="feature-card glass-panel">
-          <div className="icon-wrapper"><PhoneCall size={24} color="var(--primary)" /></div>
-          <h3>Neemt Direct Op</h3>
-          <p>Klanten wachten niet meer. De AI antwoordt direct op basis van je website, FAQ en openingstijden.</p>
+          <div className="icon-wrapper">
+            <Clock3 size={22} color="var(--primary)" />
+          </div>
+          <h3>24/7 bereikbaar</h3>
+          <p>Geen gemiste oproepen meer. De assistent handelt standaardvragen en intake direct af.</p>
         </div>
+
         <div className="feature-card glass-panel">
-          <div className="icon-wrapper"><UploadCloud size={24} color="var(--secondary)" /></div>
-          <h3>Leert Je Bedrijf Kennen</h3>
-          <p>Upload PDF's of geef je website op. De AI weet binnen enkele seconden alles over je diensten en prijzen.</p>
+          <div className="icon-wrapper">
+            <BadgeCheck size={22} color="var(--secondary)" />
+          </div>
+          <h3>Pas live na betaling</h3>
+          <p>Eerst web-test in je SaaS. Nummer gaat pas live na invoice approval en provisioning.</p>
         </div>
+
         <div className="feature-card glass-panel">
-          <div className="icon-wrapper"><Clock size={24} color="#10B981" /></div>
-          <h3>24/7 Bereikbaar</h3>
-          <p>Zelfs buiten kantooruren, in het weekend of tijdens feestdagen worden je klanten perfect geholpen.</p>
+          <div className="icon-wrapper">
+            <ShieldCheck size={22} color="#22c55e" />
+          </div>
+          <h3>Transparante kosten</h3>
+          <p>Per pakket zie je inbegrepen minuten, overage en verwachte marge direct in je dashboard.</p>
         </div>
       </section>
 
-      {/* Stats/Proof Section */}
-      <section className="proof-section" style={{ width: '100%', maxWidth: '1200px', margin: '4rem auto', textAlign: 'center' }}>
-        <h2 className="font-heading" style={{ fontSize: '2.5rem', marginBottom: '3rem' }}>Klanten krijgen sneller antwoord. Teams krijgen tijd terug.</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem' }}>
-           <div>
-             <h3 style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '0.5rem' }}>85%</h3>
-             <p className="text-muted">Van de vragen direct opgelost zonder medewerker</p>
-           </div>
-           <div>
-             <h3 style={{ fontSize: '3rem', color: 'var(--secondary)', marginBottom: '0.5rem' }}>24/7</h3>
-             <p className="text-muted">Bereikbaarheid buiten kantooruren en in weekends</p>
-           </div>
-           <div>
-             <h3 style={{ fontSize: '3rem', color: '#10B981', marginBottom: '0.5rem' }}>100%</h3>
-             <p className="text-muted">Van de gesprekken professioneel samengevat</p>
-           </div>
+      <section className="proof-section glass-panel" id="hoe-het-werkt">
+        <div className="proof-copy">
+          <h2>Van onboarding naar live telefoonnummer in 4 stappen</h2>
+          <p>
+            Je klantflow blijft simpel: bedrijfsinfo invullen, stem kiezen, webgesprek testen, factuur aanvragen.
+            Daarna zet admin op betaald en provisioning maakt alles live.
+          </p>
+          <div className="proof-cta-row">
+            <button className="btn-primary" onClick={() => navigate('/info')}>
+              Bekijk volledige flow <ArrowRight size={16} />
+            </button>
+            <button className="btn-secondary" onClick={() => navigate('/pricing')}>
+              Bekijk pakketten
+            </button>
+          </div>
+        </div>
+
+        <div className="proof-grid">
+          <div>
+            <h3>01</h3>
+            <p>Wizard + prompt setup</p>
+          </div>
+          <div>
+            <h3>02</h3>
+            <p>Web call test</p>
+          </div>
+          <div>
+            <h3>03</h3>
+            <p>Invoice & approval</p>
+          </div>
+          <div>
+            <h3>04</h3>
+            <p>Provisioning naar live</p>
+          </div>
         </div>
       </section>
+
+      <footer className="marketing-footer">
+        <p>AI Hub Voice • NL-first AI bel-assistent platform</p>
+        <div>
+          <button onClick={() => navigate('/info')}>Info</button>
+          <button onClick={() => navigate('/pricing')}>Pricing</button>
+          <button onClick={() => navigate('/login')}>Login</button>
+        </div>
+      </footer>
     </div>
   );
 };

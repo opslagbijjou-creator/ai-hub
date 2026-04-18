@@ -78,8 +78,18 @@ Belangrijk: Netlify host alleen de frontend. De API draait apart.
 - Admin approval endpoint (`paid_approved`)
 - Auto provisioning endpoint naar `live` (Twilio of simulatie)
 - Usage summary met inbegrepen limieten + overage indicatie
+- Publieke pagina's: `/`, `/pricing`, `/info`
 
-## 6) GitHub
+## 6) Pakketten (huidig model)
+
+- `Launch` – €299/mnd – 180 min – overage €1.15/min
+- `Growth` – €499/mnd – 420 min – overage €1.05/min
+- `Scale` – €799/mnd – 900 min – overage €0.95/min
+- `Enterprise` – €1199/mnd – 1600 min – overage €0.85/min
+
+De pakketten zijn afgestemd op stijgende absolute winst per pakket en een netto marge-doel boven 60% op basis van de cost assumptions in `src/lib/pricing.js`.
+
+## 7) GitHub
 
 ```bash
 git push origin main

@@ -4,13 +4,11 @@ import {
   Activity,
   BookOpen,
   CreditCard,
-  Database,
   Phone,
   PhoneCall,
   RefreshCcw,
   Settings,
   UploadCloud,
-  Users,
   X
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
@@ -55,7 +53,7 @@ const KnowledgeBase = () => {
   };
 
   return (
-    <div className="dashboard-knowledge animate-fade-in" style={{ padding: '2rem' }}>
+    <div className="dashboard-knowledge animate-fade-in">
       <div className="dashboard-header">
         <h1 className="font-heading">Knowledge Base</h1>
         <p className="text-muted">
@@ -63,14 +61,14 @@ const KnowledgeBase = () => {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2rem' }}>
-        <div className="glass-panel" style={{ padding: '2rem' }}>
+      <div className="kb-grid">
+        <div className="glass-panel kb-card">
           <h3 style={{ marginBottom: '0.5rem' }}>Website bronnen</h3>
           <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
             Deze bronnen gebruik je als context voor antwoorden tijdens calls.
           </p>
 
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+          <div className="kb-input-row">
             <input
               type="text"
               placeholder="https://www.jouwwebsite.nl"
@@ -90,18 +88,11 @@ const KnowledgeBase = () => {
             </button>
           </div>
 
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <ul className="kb-list">
             {knowledgeBase.urls.map((url) => (
               <li
                 key={url}
-                className="glass-panel"
-                style={{
-                  padding: '0.75rem 0.9rem',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: 'var(--bg-surface-hover)'
-                }}
+                className="glass-panel kb-list-item"
               >
                 <span>{url}</span>
                 <button style={{ color: '#ef4444' }} onClick={() => handleRemoveUrl(url)}>
@@ -113,18 +104,7 @@ const KnowledgeBase = () => {
           </ul>
         </div>
 
-        <div
-          className="glass-panel"
-          style={{
-            padding: '2rem',
-            border: '2px dashed var(--glass-border)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center'
-          }}
-        >
+        <div className="glass-panel kb-upload-panel">
           <UploadCloud size={50} color="var(--primary)" style={{ marginBottom: '0.8rem' }} />
           <h3>Document upload</h3>
           <p className="text-muted" style={{ marginTop: '0.6rem', marginBottom: '1rem' }}>
@@ -309,14 +289,17 @@ const Overview = () => {
         value: usage ? `${usage.minutesUsed}` : '0',
         trend: usage ? `${usage.includedMinutes} inbegrepen` : 'Geen data',
         icon: <PhoneCall size={22} />,
-        iconStyle: { background: 'rgba(139, 92, 246, 0.2)', color: 'var(--primary)' }
+        iconStyle: { background: 'color-mix(in srgb, var(--primary) 20%, transparent)', color: 'var(--primary)' }
       },
       {
         label: 'Tasks Used',
         value: usage ? `${usage.tasksUsed}` : '0',
         trend: usage ? `${usage.includedTasks} inbegrepen` : 'Geen data',
         icon: <Activity size={22} />,
-        iconStyle: { background: 'rgba(0, 229, 255, 0.2)', color: 'var(--secondary)' }
+        iconStyle: {
+          background: 'color-mix(in srgb, var(--secondary) 22%, transparent)',
+          color: 'var(--secondary)'
+        }
       },
       {
         label: 'Expected Invoice',
@@ -341,7 +324,15 @@ const Overview = () => {
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <StatusPill label="Live" value={assistantState?.assistant?.live_status || 'not_live'} />
         <StatusPill label="Billing" value={assistantState?.assistant?.billing_status || 'none'} />
-        <StatusPill label="Plan" value={assistantState?.plan?.name || 'Starter'} />
+        <StatusPill label="Plan" value={assistantState?.plan?.name || 'Launch'} />
+        <StatusPill
+          label="Overage"
+          value={`€${Number(assistantState?.plan?.overageMinuteEur || 0).toFixed(2)}/min`}
+        />
+        <StatusPill
+          label="Netto marge"
+          value={`${Number(assistantState?.plan?.metrics?.netMarginPct || 0).toFixed(1)}%`}
+        />
         <button className="btn-secondary" onClick={loadData} disabled={loading}>
           <RefreshCcw size={16} /> Vernieuw
         </button>
@@ -365,21 +356,12 @@ const Overview = () => {
           padding: '1.25rem',
           marginBottom: '1.5rem',
           borderLeft: '4px solid var(--primary)',
-          background: 'rgba(139, 92, 246, 0.06)'
+          background: 'color-mix(in srgb, var(--primary) 8%, transparent)'
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div
-              style={{
-                width: '56px',
-                height: '56px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
-                display: 'grid',
-                placeItems: 'center'
-              }}
-            >
+        <div className="assistant-banner-row">
+          <div className="assistant-banner-main">
+            <div className="assistant-avatar">
               <Phone size={24} color="white" />
             </div>
             <div>
@@ -392,7 +374,7 @@ const Overview = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="assistant-actions">
             <button className="btn-secondary" onClick={() => setShowSettings(true)}>
               <Settings size={15} /> Instellingen
             </button>
@@ -444,19 +426,8 @@ const Overview = () => {
       </div>
 
       {showSettings && (
-        <div
-          className="modal-overlay"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.62)',
-            backdropFilter: 'blur(4px)',
-            display: 'grid',
-            placeItems: 'center',
-            zIndex: 100
-          }}
-        >
-          <div className="glass-panel" style={{ width: 'min(620px, 92vw)', padding: '1.5rem', position: 'relative' }}>
+        <div className="modal-overlay">
+          <div className="glass-panel settings-modal">
             <button
               onClick={() => setShowSettings(false)}
               style={{ position: 'absolute', top: '1rem', right: '1rem', color: 'var(--text-main)' }}
@@ -512,9 +483,15 @@ const Catalog = () => {
       </div>
 
       <div className="catalog-grid">
-        <div className="app-card glass-panel" style={{ borderColor: 'var(--primary)', boxShadow: '0 0 20px rgba(139, 92, 246, 0.2)' }}>
+        <div
+          className="app-card glass-panel"
+          style={{
+            borderColor: 'var(--primary)',
+            boxShadow: '0 0 20px color-mix(in srgb, var(--primary) 24%, transparent)'
+          }}
+        >
           <div className="app-header">
-            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #8B5CF6, #00E5FF)' }}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, var(--primary), var(--secondary))' }}>
               📞
             </div>
             <div className="app-badge">Actief</div>
@@ -528,7 +505,13 @@ const Catalog = () => {
           </button>
         </div>
 
-        <div className="app-card glass-panel" style={{ borderColor: 'var(--secondary)', boxShadow: '0 0 20px rgba(0, 229, 255, 0.18)' }}>
+        <div
+          className="app-card glass-panel"
+          style={{
+            borderColor: 'var(--secondary)',
+            boxShadow: '0 0 20px color-mix(in srgb, var(--secondary) 22%, transparent)'
+          }}
+        >
           <div className="app-header">
             <div className="app-icon" style={{ background: 'linear-gradient(135deg, #0EA5E9, #22D3EE)' }}>
               🧪

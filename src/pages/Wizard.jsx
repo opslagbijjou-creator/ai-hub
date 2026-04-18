@@ -14,6 +14,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import { useAppContext } from '../context/AppContext';
+import { PRICING_PLANS, getPlanByKey } from '../lib/pricing';
 import WebCallPanel from '../components/WebCallPanel';
 import './Wizard.css';
 
@@ -36,13 +37,6 @@ const FALLBACK_NUMBERS = [
   { e164: '+31208081234', label: 'Amsterdam, NL' },
   { e164: '+31103456789', label: 'Rotterdam, NL' },
   { e164: '+31859990000', label: 'National, NL' }
-];
-
-const PLAN_OPTIONS = [
-  { key: 'plan_150', label: 'Starter', price: '€150 / mnd' },
-  { key: 'plan_275', label: 'Growth', price: '€275 / mnd' },
-  { key: 'plan_500', label: 'Pro', price: '€500 / mnd' },
-  { key: 'plan_850', label: 'Scale', price: '€850 / mnd' }
 ];
 
 const Wizard = () => {
@@ -71,7 +65,7 @@ const Wizard = () => {
     knowledge: '',
     voiceKey: FALLBACK_VOICES[0].key,
     numberE164: FALLBACK_NUMBERS[0].e164,
-    planKey: 'plan_150'
+    planKey: 'plan_275'
   });
 
   const playAudio = (url, event) => {
@@ -266,6 +260,7 @@ const Wizard = () => {
   }, [loadOptions, refreshAssistantState]);
 
   const selectedVoice = voices.find((voice) => voice.key === formData.voiceKey) || voices[0];
+  const selectedPlan = getPlanByKey(formData.planKey);
 
   const assistantGreeting =
     formData.greeting ||
@@ -452,14 +447,20 @@ const Wizard = () => {
             <div className="form-group mt-4">
               <label>Pakket</label>
               <div className="selection-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                {PLAN_OPTIONS.map((plan) => (
+                {PRICING_PLANS.map((plan) => (
                   <div
                     key={plan.key}
                     className={`selection-card ${formData.planKey === plan.key ? 'active' : ''} glass-panel`}
                     onClick={() => setFormData((prev) => ({ ...prev, planKey: plan.key }))}
                   >
-                    <h3>{plan.label}</h3>
-                    <p>{plan.price}</p>
+                    <h3>{plan.name}</h3>
+                    <p style={{ marginBottom: '0.2rem' }}>€{plan.monthlyPriceEur} / mnd</p>
+                    <small className="text-muted">
+                      {plan.includedMinutes} min + {plan.includedTasks} tasks
+                    </small>
+                    <small className="text-muted">
+                      Overage €{plan.overageMinuteEur.toFixed(2)}/min
+                    </small>
                   </div>
                 ))}
               </div>
@@ -505,6 +506,14 @@ const Wizard = () => {
                 {invoiceStatus}
               </div>
             )}
+
+            <div className="glass-panel" style={{ marginTop: '1rem', padding: '0.95rem' }}>
+              <h3 style={{ marginBottom: '0.35rem' }}>Geselecteerd pakket</h3>
+              <p className="text-muted" style={{ margin: 0 }}>
+                {selectedPlan.name}: €{selectedPlan.monthlyPriceEur}/mnd, {selectedPlan.includedMinutes} minuten
+                inbegrepen, overage €{selectedPlan.overageMinuteEur.toFixed(2)}/min.
+              </p>
+            </div>
 
             <div style={{ marginTop: '1rem' }}>
               <WebCallPanel

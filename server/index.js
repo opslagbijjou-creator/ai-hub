@@ -90,35 +90,49 @@ const DEFAULT_NUMBERS = [
 const PLAN_CATALOG = {
   plan_150: {
     key: 'plan_150',
-    name: 'Starter',
-    monthlyPriceEur: 150,
-    includedMinutes: 200,
-    includedTasks: 250
+    name: 'Launch',
+    monthlyPriceEur: 299,
+    includedMinutes: 180,
+    includedTasks: 450,
+    overageMinuteEur: 1.15,
+    overageTaskEur: 0.08
   },
   plan_275: {
     key: 'plan_275',
     name: 'Growth',
-    monthlyPriceEur: 275,
-    includedMinutes: 450,
-    includedTasks: 600
+    monthlyPriceEur: 499,
+    includedMinutes: 420,
+    includedTasks: 1100,
+    overageMinuteEur: 1.05,
+    overageTaskEur: 0.07
   },
   plan_500: {
     key: 'plan_500',
-    name: 'Pro',
-    monthlyPriceEur: 500,
-    includedMinutes: 950,
-    includedTasks: 1400
+    name: 'Scale',
+    monthlyPriceEur: 799,
+    includedMinutes: 900,
+    includedTasks: 2500,
+    overageMinuteEur: 0.95,
+    overageTaskEur: 0.06
   },
   plan_850: {
     key: 'plan_850',
-    name: 'Scale',
-    monthlyPriceEur: 850,
-    includedMinutes: 1900,
-    includedTasks: 3200
+    name: 'Enterprise',
+    monthlyPriceEur: 1199,
+    includedMinutes: 1600,
+    includedTasks: 4500,
+    overageMinuteEur: 0.85,
+    overageTaskEur: 0.05
   }
 };
 
 const DEFAULT_PLAN = PLAN_CATALOG.plan_150;
+const COST_ASSUMPTIONS = {
+  fixedMonthlyCostEur: 35,
+  minuteVendorCostEur: 0.12,
+  taskVendorCostEur: 0.01,
+  corpTaxRate: 0.19
+};
 
 function nowIso() {
   return new Date().toISOString();
@@ -132,6 +146,22 @@ function normalizePlanKey(value) {
 
 function getPlanConfig(planKey) {
   return PLAN_CATALOG[normalizePlanKey(planKey)] || DEFAULT_PLAN;
+}
+
+function estimatePlanMetrics(plan) {
+  const minuteCosts = plan.includedMinutes * COST_ASSUMPTIONS.minuteVendorCostEur;
+  const taskCosts = plan.includedTasks * COST_ASSUMPTIONS.taskVendorCostEur;
+  const estimatedCogs = COST_ASSUMPTIONS.fixedMonthlyCostEur + minuteCosts + taskCosts;
+  const preTaxProfit = plan.monthlyPriceEur - estimatedCogs;
+  const preTaxMargin = plan.monthlyPriceEur > 0 ? preTaxProfit / plan.monthlyPriceEur : 0;
+  const netProfit = preTaxProfit * (1 - COST_ASSUMPTIONS.corpTaxRate);
+  const netMargin = plan.monthlyPriceEur > 0 ? netProfit / plan.monthlyPriceEur : 0;
+
+  return {
+    estimatedCogsEur: Number(Math.max(estimatedCogs, 0).toFixed(2)),
+    preTaxMarginPct: Number((Math.max(preTaxMargin, 0) * 100).toFixed(1)),
+    netMarginPct: Number((Math.max(netMargin, 0) * 100).toFixed(1))
+  };
 }
 
 function normalizePhoneNumber(value) {
@@ -683,6 +713,18 @@ route('get', '/api/voices/options', (_req, res) => {
   res.json(VOICE_OPTIONS);
 });
 
+route('get', '/api/pricing/plans', (_req, res) => {
+  const plans = Object.values(PLAN_CATALOG).map((plan) => ({
+    ...plan,
+    metrics: estimatePlanMetrics(plan)
+  }));
+
+  res.json({
+    plans,
+    assumptions: COST_ASSUMPTIONS
+  });
+});
+
 route('get', '/api/numbers/options', requireAuth, async (req, res) => {
   try {
     const options = [];
@@ -742,6 +784,8 @@ route('get', '/api/assistant/state', requireAuth, async (req, res) => {
       .eq('assistant_id', assistant.id)
       .maybeSingle();
 
+    const selectedPlan = getPlanConfig(subscription?.plan_key || assistant.desired_plan);
+
     res.json({
       assistant,
       profile,
@@ -750,7 +794,10 @@ route('get', '/api/assistant/state', requireAuth, async (req, res) => {
       latestInvoice: invoice || null,
       latestProvisioningJob: provisioningJob || null,
       subscription: subscription || null,
-      plan: getPlanConfig(subscription?.plan_key || assistant.desired_plan)
+      plan: {
+        ...selectedPlan,
+        metrics: estimatePlanMetrics(selectedPlan)
+      }
     });
   } catch (error) {
     sendDbError(res, error);
@@ -1313,7 +1360,9 @@ route('get', '/api/usage/summary', requireAuth, async (req, res) => {
 
     const overageMinutes = Math.max(0, minutesUsed - plan.includedMinutes);
     const overageTasks = Math.max(0, tasksUsed - plan.includedTasks);
-    const overageEstimate = overageMinutes * 0.2 + overageTasks * 0.02;
+    const overageEstimate =
+      overageMinutes * Number(plan.overageMinuteEur || 0) + overageTasks * Number(plan.overageTaskEur || 0);
+    const planMetrics = estimatePlanMetrics(plan);
 
     res.json({
       plan,
@@ -1324,9 +1373,13 @@ route('get', '/api/usage/summary', requireAuth, async (req, res) => {
         includedTasks: plan.includedTasks,
         overageMinutes,
         overageTasks,
+        overageMinuteRateEur: Number(plan.overageMinuteEur || 0),
+        overageTaskRateEur: Number(plan.overageTaskEur || 0),
         overageEstimateEur: Number(overageEstimate.toFixed(2)),
         variableCostsEur: Number(variableCosts.toFixed(2)),
-        expectedInvoiceEur: Number((plan.monthlyPriceEur + overageEstimate).toFixed(2))
+        expectedInvoiceEur: Number((plan.monthlyPriceEur + overageEstimate).toFixed(2)),
+        estimatedCogsEur: planMetrics.estimatedCogsEur,
+        estimatedNetMarginPct: planMetrics.netMarginPct
       },
       periodStart: periodStart.toISOString(),
       generatedAt: nowIso()

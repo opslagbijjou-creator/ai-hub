@@ -3,6 +3,8 @@ import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
 import Wizard from './pages/Wizard';
+import PricingPage from './pages/PricingPage';
+import InfoPage from './pages/InfoPage';
 import { AppProvider, useAppContext } from './context/AppContext';
 import './App.css';
 
@@ -30,6 +32,8 @@ function AppRoutes() {
     <div className="app-container">
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/info" element={<InfoPage />} />
         <Route path="/login" element={<AuthPage />} />
         <Route path="/dashboard/*" element={
           <ProtectedRoute>

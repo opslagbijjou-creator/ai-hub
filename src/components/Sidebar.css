@@ -83,3 +83,24 @@
   background: rgba(248, 113, 113, 0.1);
   color: #FCA5A5;
 }
+
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 100%;
+    height: auto;
+    position: relative;
+    border-right: none;
+    border-left: none;
+    border-top: none;
+    border-radius: 0 0 16px 16px;
+  }
+
+  .sidebar-nav {
+    gap: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .nav-section {
+    gap: 0.25rem;
+  }
+}
