@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { hasSupabaseConfig, supabase, supabaseConfigMessage } from '../lib/supabase';
 
 const AppContext = createContext();
 
@@ -16,6 +16,12 @@ export const AppProvider = ({ children }) => {
 
   // Listen to auth state changes
   useEffect(() => {
+    if (!hasSupabaseConfig) {
+      setUser(null);
+      setAuthLoading(false);
+      return undefined;
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -39,7 +45,9 @@ export const AppProvider = ({ children }) => {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (hasSupabaseConfig) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     setAssistantConfig(null);
   };
@@ -49,7 +57,9 @@ export const AppProvider = ({ children }) => {
       assistantConfig, setAssistantConfig, 
       theme, toggleTheme,
       knowledgeBase, setKnowledgeBase,
-      user, authLoading, signOut
+      user, authLoading, signOut,
+      supabaseConfigured: hasSupabaseConfig,
+      supabaseConfigMessage
     }}>
       {children}
     </AppContext.Provider>
