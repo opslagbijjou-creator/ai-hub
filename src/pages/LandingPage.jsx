@@ -7,20 +7,15 @@ import {
   Clock3,
   Headset,
   Mic,
-  Moon,
   PhoneCall,
   ShieldCheck,
-  Sparkles,
-  Sun,
-  Wallet
+  Sparkles
 } from 'lucide-react';
 import { PRICING_PLANS } from '../lib/pricing';
-import { useAppContext } from '../context/AppContext';
 import './LandingPage.css';
 
 const LandingPage = () => {
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useAppContext();
 
   const growthPlan = PRICING_PLANS.find((plan) => plan.key === 'plan_275') || PRICING_PLANS[1];
 
@@ -43,9 +38,6 @@ const LandingPage = () => {
         </div>
 
         <div className="nav-actions">
-          <button className="theme-toggle-btn" onClick={toggleTheme}>
-            {theme === 'dark-mode' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
           <button className="btn-secondary" onClick={() => navigate('/login')}>
             Inloggen
           </button>
@@ -87,7 +79,7 @@ const LandingPage = () => {
               <BrainCircuit size={15} /> Live AI states in UI
             </div>
             <div className="hero-pill glass-panel">
-              <Wallet size={15} /> Marge-gedreven pricing
+              <BadgeCheck size={15} /> Duidelijke pakketten en overage
             </div>
           </div>
         </section>
@@ -168,7 +160,7 @@ const LandingPage = () => {
             <ShieldCheck size={22} color="#22c55e" />
           </div>
           <h3>Transparante kosten</h3>
-          <p>Per pakket zie je inbegrepen minuten, overage en verwachte marge direct in je dashboard.</p>
+          <p>Per pakket zie je inbegrepen minuten en duidelijke kosten voor extra minuten.</p>
         </div>
       </section>
 

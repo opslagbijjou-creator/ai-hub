@@ -1,19 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Calculator, Moon, Sun } from 'lucide-react';
-import {
-  COST_ASSUMPTIONS,
-  PRICING_PLANS,
-  PRICING_VENDOR_BENCHMARKS,
-  estimatePlanMetrics,
-  getPlanByKey
-} from '../lib/pricing';
-import { useAppContext } from '../context/AppContext';
+import { ArrowRight, CheckCircle2, Calculator } from 'lucide-react';
+import { PRICING_PLANS, getPlanByKey } from '../lib/pricing';
 import './LandingPage.css';
 
 const PricingPage = () => {
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useAppContext();
   const [selectedPlanKey, setSelectedPlanKey] = useState(PRICING_PLANS[1].key);
   const [minutes, setMinutes] = useState(PRICING_PLANS[1].includedMinutes);
   const [tasks, setTasks] = useState(PRICING_PLANS[1].includedTasks);
@@ -26,24 +18,14 @@ const PricingPage = () => {
 
     const base = selectedPlan.monthlyPriceEur;
     const overage = overageMinutes * selectedPlan.overageMinuteEur + overageTasks * selectedPlan.overageTaskEur;
-    const revenue = base + overage;
-
-    const cogs =
-      COST_ASSUMPTIONS.fixedMonthlyCostEur +
-      minutes * COST_ASSUMPTIONS.minuteVendorCostEur +
-      tasks * COST_ASSUMPTIONS.taskVendorCostEur;
-
-    const preTaxProfit = revenue - cogs;
-    const netProfit = preTaxProfit * (1 - COST_ASSUMPTIONS.corpTaxRate);
-    const netMarginPct = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+    const total = base + overage;
 
     return {
       overageMinutes,
       overageTasks,
-      revenue: Number(revenue.toFixed(2)),
-      cogs: Number(cogs.toFixed(2)),
-      netProfit: Number(netProfit.toFixed(2)),
-      netMarginPct: Number(Math.max(netMarginPct, 0).toFixed(1))
+      base: Number(base.toFixed(2)),
+      overage: Number(overage.toFixed(2)),
+      total: Number(total.toFixed(2))
     };
   }, [minutes, selectedPlan, tasks]);
 
@@ -65,9 +47,6 @@ const PricingPage = () => {
         </div>
 
         <div className="nav-actions">
-          <button className="theme-toggle-btn" onClick={toggleTheme}>
-            {theme === 'dark-mode' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
           <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
             Start setup <ArrowRight size={16} />
           </button>
@@ -75,16 +54,14 @@ const PricingPage = () => {
       </nav>
 
       <section className="pricing-hero">
-        <h1>Pricing die op marge stuurt, niet op gokken</h1>
+        <h1>Eerlijke en duidelijke pakketten</h1>
         <p>
-          Pakketten zijn opgezet voor oplopende absolute winst per klant, inclusief buffer voor inkoop, operationele
-          kosten en belastingdruk.
+          Kies het pakket dat past bij je belvolume. Je ziet meteen wat inbegrepen is en wat extra minuten kosten.
         </p>
       </section>
 
       <section className="pricing-grid">
         {PRICING_PLANS.map((plan) => {
-          const metrics = estimatePlanMetrics(plan);
           const isActive = plan.key === selectedPlanKey;
 
           return (
@@ -116,11 +93,6 @@ const PricingPage = () => {
                   <CheckCircle2 size={16} /> Overage: €{plan.overageTaskEur.toFixed(2)}/task
                 </li>
               </ul>
-
-              <div className="plan-metrics">
-                <span>Geschatte netto marge</span>
-                <strong>{metrics.netMarginPct}%</strong>
-              </div>
             </article>
           );
         })}
@@ -129,9 +101,9 @@ const PricingPage = () => {
       <section className="calculator-panel glass-panel">
         <div className="calculator-head">
           <h2>
-            <Calculator size={20} /> Marge calculator
+            <Calculator size={20} /> Maandelijkse kosten calculator
           </h2>
-          <p>Speel met usage en zie direct omzet, kosten en netto marge op basis van het gekozen pakket.</p>
+          <p>Pas je verwachte gebruik aan en zie direct je geschatte maandbedrag.</p>
         </div>
 
         <div className="calculator-controls">
@@ -162,43 +134,43 @@ const PricingPage = () => {
 
         <div className="calculator-stats">
           <div>
-            <span>Verwachte omzet</span>
-            <strong>€{calculator.revenue}</strong>
+            <span>Abonnement</span>
+            <strong>€{calculator.base}</strong>
           </div>
           <div>
-            <span>Geschatte kosten</span>
-            <strong>€{calculator.cogs}</strong>
+            <span>Extra kosten</span>
+            <strong>€{calculator.overage}</strong>
           </div>
           <div>
-            <span>Netto winst na belasting</span>
-            <strong>€{calculator.netProfit}</strong>
+            <span>Extra minuten</span>
+            <strong>{calculator.overageMinutes}</strong>
           </div>
           <div>
-            <span>Netto marge</span>
-            <strong>{calculator.netMarginPct}%</strong>
+            <span>Totaal per maand</span>
+            <strong>€{calculator.total}</strong>
           </div>
         </div>
-
-        <p className="calculator-meta">
-          Aannames: vaste kosten €{COST_ASSUMPTIONS.fixedMonthlyCostEur}/mnd, variabele kost
-          €{COST_ASSUMPTIONS.minuteVendorCostEur.toFixed(2)}/min en €{COST_ASSUMPTIONS.taskVendorCostEur.toFixed(2)} per
-          task, vennootschapsbelasting {Math.round(COST_ASSUMPTIONS.corpTaxRate * 100)}%.
-        </p>
       </section>
 
       <section className="sources-panel glass-panel">
-        <h2>Bronnen en benchmarks</h2>
-        <p className="text-muted">Gecontroleerd op 18 april 2026. Herijk dit bij vendor price changes.</p>
+        <h2>Wat krijg je bij elk pakket?</h2>
         <ul>
-          {PRICING_VENDOR_BENCHMARKS.map((item) => (
-            <li key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <a href={item.source} target="_blank" rel="noreferrer">
-                bron
-              </a>
-            </li>
-          ))}
+          <li>
+            <span>Onboarding wizard en AI prompt op maat</span>
+            <strong>Inbegrepen</strong>
+          </li>
+          <li>
+            <span>Web call test met live status</span>
+            <strong>Inbegrepen</strong>
+          </li>
+          <li>
+            <span>Dashboard met usage en factuurstatus</span>
+            <strong>Inbegrepen</strong>
+          </li>
+          <li>
+            <span>Live zetten op telefoonnummer na approval</span>
+            <strong>Inbegrepen</strong>
+          </li>
         </ul>
       </section>
 

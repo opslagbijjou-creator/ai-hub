@@ -1,19 +1,19 @@
 :root,
-.dark-mode {
-  --bg-dark: #0e1116;
-  --bg-surface: #171c24;
-  --bg-surface-hover: #212938;
-  --bg-surface-border: rgba(148, 163, 184, 0.18);
+.light-mode {
+  --bg-dark: #f6f8fc;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f2f5fb;
+  --bg-surface-border: rgba(15, 23, 42, 0.1);
 
-  --primary: #f97316;
-  --primary-glow: rgba(249, 115, 22, 0.32);
-  --secondary: #14b8a6;
+  --primary: #ea580c;
+  --primary-glow: rgba(234, 88, 12, 0.2);
+  --secondary: #0f766e;
 
-  --text-main: #f7fbff;
-  --text-muted: #9aadc2;
+  --text-main: #1f2937;
+  --text-muted: #64748b;
 
-  --glass-bg: rgba(23, 28, 36, 0.72);
-  --glass-border: rgba(148, 163, 184, 0.2);
+  --glass-bg: rgba(255, 255, 255, 0.94);
+  --glass-border: rgba(15, 23, 42, 0.1);
 
   --font-heading: 'Space Grotesk', sans-serif;
   --font-body: 'Plus Jakarta Sans', sans-serif;
@@ -22,21 +22,21 @@
   --transition-normal: 0.25s ease;
 }
 
-.light-mode {
-  --bg-dark: #fffaf5;
-  --bg-surface: #ffffff;
-  --bg-surface-hover: #fff3e8;
-  --bg-surface-border: rgba(41, 58, 85, 0.14);
+.dark-mode {
+  --bg-dark: #0e1116;
+  --bg-surface: #171c24;
+  --bg-surface-hover: #212938;
+  --bg-surface-border: rgba(148, 163, 184, 0.2);
 
-  --primary: #ea580c;
-  --primary-glow: rgba(234, 88, 12, 0.25);
-  --secondary: #0f766e;
+  --primary: #f97316;
+  --primary-glow: rgba(249, 115, 22, 0.32);
+  --secondary: #14b8a6;
 
-  --text-main: #1b2736;
-  --text-muted: #5e6f86;
+  --text-main: #f7fbff;
+  --text-muted: #9aadc2;
 
-  --glass-bg: rgba(255, 255, 255, 0.82);
-  --glass-border: rgba(41, 58, 85, 0.16);
+  --glass-bg: rgba(23, 28, 36, 0.74);
+  --glass-border: rgba(148, 163, 184, 0.22);
 
   --font-heading: 'Space Grotesk', sans-serif;
   --font-body: 'Plus Jakarta Sans', sans-serif;
@@ -134,8 +134,8 @@ select {
 
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--glass-border);
   border-radius: 16px;
 }
@@ -152,7 +152,7 @@ select {
 }
 
 .btn-primary {
-  background: linear-gradient(138deg, var(--primary), color-mix(in srgb, var(--primary) 65%, #dc2626));
+  background: var(--primary);
   color: #fff;
   padding: 0.72rem 1rem;
   border-radius: 10px;
@@ -162,12 +162,12 @@ select {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  box-shadow: 0 10px 22px color-mix(in srgb, var(--primary) 26%, transparent);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 28px color-mix(in srgb, var(--primary) 34%, transparent);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .btn-secondary {

@@ -5,7 +5,10 @@ const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
   const [assistantConfig, setAssistantConfig] = useState(null);
-  const [theme, setTheme] = useState('dark-mode');
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'light-mode';
+    return localStorage.getItem('theme') || 'light-mode';
+  });
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   
@@ -45,6 +48,7 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     document.body.className = theme;
+    localStorage.setItem('theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {

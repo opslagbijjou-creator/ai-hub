@@ -3,19 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   CreditCard,
-  Moon,
   Network,
   Shield,
-  Sun,
   Workflow,
   Wrench
 } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
 import './LandingPage.css';
 
 const InfoPage = () => {
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useAppContext();
 
   return (
     <div className="landing-container marketing-page">
@@ -35,9 +31,6 @@ const InfoPage = () => {
         </div>
 
         <div className="nav-actions">
-          <button className="theme-toggle-btn" onClick={toggleTheme}>
-            {theme === 'dark-mode' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
           <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
             Start setup <ArrowRight size={16} />
           </button>
@@ -45,10 +38,9 @@ const InfoPage = () => {
       </nav>
 
       <section className="pricing-hero info-hero">
-        <h1>Info: zo werkt jouw AI bel-assistent platform</h1>
+        <h1>Zo werkt jouw AI bel-assistent</h1>
         <p>
-          Deze omgeving is gebouwd als call-only MVP: web test eerst, telefoon pas live na payment approval en
-          provisioning.
+          Rustige flow: eerst testen op je website, daarna live op telefoon zodra betaling is goedgekeurd.
         </p>
       </section>
 
@@ -71,7 +63,7 @@ const InfoPage = () => {
           </h3>
           <ul>
             <li>Frontend: React + Vite</li>
-            <li>Backend: lichte Express API laag</li>
+            <li>Backend: lichte API-laag</li>
             <li>Database: Supabase (RLS per tenant)</li>
             <li>Telephony: Twilio</li>
             <li>AI/spraak: OpenAI + ElevenLabs</li>
@@ -98,7 +90,7 @@ const InfoPage = () => {
             <li>Supabase Auth + token-based API requests</li>
             <li>Per gebruiker gescheiden records via RLS</li>
             <li>Call sessions en usage worden gelogd voor auditing</li>
-            <li>Geen WhatsApp meer in productscope</li>
+            <li>Focus: alleen telefoon-assistent (geen WhatsApp)</li>
           </ul>
         </article>
 

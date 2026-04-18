@@ -329,10 +329,6 @@ const Overview = () => {
           label="Overage"
           value={`€${Number(assistantState?.plan?.overageMinuteEur || 0).toFixed(2)}/min`}
         />
-        <StatusPill
-          label="Netto marge"
-          value={`${Number(assistantState?.plan?.metrics?.netMarginPct || 0).toFixed(1)}%`}
-        />
         <button className="btn-secondary" onClick={loadData} disabled={loading}>
           <RefreshCcw size={16} /> Vernieuw
         </button>

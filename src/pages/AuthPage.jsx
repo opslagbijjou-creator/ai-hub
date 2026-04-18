@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppContext } from '../context/AppContext';
@@ -6,7 +6,7 @@ import { Bot, Mail, Lock, ChevronRight, ArrowLeft, User, Sparkles } from 'lucide
 import './LandingPage.css';
 
 const AuthPage = () => {
-  const { supabaseConfigured, supabaseConfigMessage } = useAppContext();
+  const { supabaseConfigured, supabaseConfigMessage, user, authLoading } = useAppContext();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -17,6 +17,12 @@ const AuthPage = () => {
   const [notice, setNotice] = useState('');
   const [resendLoading, setResendLoading] = useState(false);
   const [animating, setAnimating] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [authLoading, navigate, user]);
 
   const normalizeAuthError = (message) => {
     const raw = String(message || '').trim();

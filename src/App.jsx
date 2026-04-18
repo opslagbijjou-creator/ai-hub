@@ -28,13 +28,32 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function AppRoutes() {
+  const { user, authLoading } = useAppContext();
+
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          background: 'var(--bg-dark)',
+          color: 'var(--text-main)'
+        }}
+      >
+        <p>Laden...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/info" element={<InfoPage />} />
-        <Route path="/login" element={<AuthPage />} />
+        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
         <Route path="/dashboard/*" element={
           <ProtectedRoute>
             <Dashboard />
