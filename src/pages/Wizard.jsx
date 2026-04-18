@@ -292,6 +292,19 @@ const Wizard = () => {
             <span>Test + Activatie</span>
           </li>
         </ul>
+
+        <div className="wizard-side-note">
+          <h4>Rustige flow voor je klant</h4>
+          <p className="text-muted">
+            De klant vult vooral bedrijfsinfo, stem en voorkeuren in. Webshop API’s en technische koppelingen kun jij later vanuit admin afronden.
+          </p>
+          <div className="wizard-side-points">
+            <span>1. Bedrijf en tone of voice</span>
+            <span>2. Stem en nummer kiezen</span>
+            <span>3. Browser-test draaien</span>
+            <span>4. Pas na goedkeuring live</span>
+          </div>
+        </div>
       </div>
 
       <div className="wizard-main">
@@ -428,7 +441,7 @@ const Wizard = () => {
         {step === 3 && (
           <div className="step-content animate-fade-in">
             <h1>Kies nummer en pakket</h1>
-            <p className="text-muted">Je kiest nu alvast je nummer en pakket. Betalen en live activeren gebeurt pas wanneer jij daar klaar voor bent.</p>
+            <p className="text-muted">Je kiest nu alvast je nummer en pakket. Betalen en live activeren gebeurt pas wanneer jij daar klaar voor bent. Shopkoppelingen kun je daarna rustig vanuit het dashboard laten regelen.</p>
 
             {loadingOptions ? (
               <div className="glass-panel" style={{ padding: '1rem', marginTop: '1.5rem' }}>
@@ -491,6 +504,21 @@ const Wizard = () => {
             <p className="text-muted">
               Je kunt nu echt praten met je AI via microfoon. De telefoonlijn blijft <strong>not live</strong> totdat betaling is goedgekeurd en provisioning is uitgevoerd.
             </p>
+
+            <div className="wizard-summary-strip">
+              <div className="wizard-summary-card">
+                <strong>Test eerst</strong>
+                <p className="text-muted">Hoor hoe je assistent klinkt en stuur de briefing bij waar nodig.</p>
+              </div>
+              <div className="wizard-summary-card">
+                <strong>Shop later koppelen</strong>
+                <p className="text-muted">In het dashboard kun je een Shopify, PrestaShop of WooCommerce setup aanvragen zonder API-gedoe voor de klant.</p>
+              </div>
+              <div className="wizard-summary-card">
+                <strong>Pas daarna live</strong>
+                <p className="text-muted">Na factuur en admin approval wordt het gekozen nummer echt live gezet.</p>
+              </div>
+            </div>
 
             <div className="glass-panel" style={{ marginTop: '1rem', padding: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               <button className="btn-secondary" onClick={refreshAssistantState}>

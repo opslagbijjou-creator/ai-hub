@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CreditCard,
+  Link2,
   PlayCircle,
   RefreshCcw,
   ShieldCheck,
@@ -23,6 +24,25 @@ const SummaryCard = ({ icon, label, value, tone = 'default' }) => (
   </div>
 );
 
+const PROVIDER_LABELS = {
+  shopify: 'Shopify',
+  prestashop: 'PrestaShop',
+  woocommerce: 'WooCommerce'
+};
+
+const createEmptyIntegrationForm = () => ({
+  assistantId: '',
+  integrationId: '',
+  provider: 'shopify',
+  storeUrl: '',
+  contactEmail: '',
+  setupNotes: '',
+  adminNotes: '',
+  accessToken: '',
+  apiKey: '',
+  apiSecret: ''
+});
+
 const AdminConsole = () => {
   const { isAdmin } = useAppContext();
   const [loading, setLoading] = useState(true);
@@ -30,6 +50,8 @@ const AdminConsole = () => {
   const [notice, setNotice] = useState('');
   const [overview, setOverview] = useState(null);
   const [actioningId, setActioningId] = useState('');
+  const [editingIntegrationKey, setEditingIntegrationKey] = useState('');
+  const [integrationForm, setIntegrationForm] = useState(createEmptyIntegrationForm());
 
   const authFetch = useCallback(async (path, options = {}) => {
     const {
@@ -141,6 +163,58 @@ const AdminConsole = () => {
     }
   };
 
+  const openIntegrationSetup = (assistant, integration) => {
+    setEditingIntegrationKey(`${assistant.assistantId}:${integration.provider}`);
+    setIntegrationForm({
+      assistantId: assistant.assistantId,
+      integrationId: integration.id || '',
+      provider: integration.provider || 'shopify',
+      storeUrl: integration.storeUrl || '',
+      contactEmail: integration.contactEmail || assistant.contactEmail || '',
+      setupNotes: integration.setupNotes || '',
+      adminNotes: '',
+      accessToken: '',
+      apiKey: '',
+      apiSecret: ''
+    });
+  };
+
+  const closeIntegrationSetup = () => {
+    setEditingIntegrationKey('');
+    setIntegrationForm(createEmptyIntegrationForm());
+  };
+
+  const completeIntegrationSetup = async () => {
+    if (!integrationForm.assistantId || !integrationForm.provider || !integrationForm.storeUrl) {
+      setError('Assistant, provider en store URL zijn verplicht voor admin shop setup.');
+      return;
+    }
+
+    setActioningId(editingIntegrationKey);
+    setNotice('');
+    setError('');
+
+    try {
+      const response = await authFetch('/api/admin/integrations/complete', {
+        method: 'POST',
+        body: JSON.stringify(integrationForm)
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Shopkoppeling afronden mislukt.');
+      }
+
+      setNotice(`${PROVIDER_LABELS[integrationForm.provider] || integrationForm.provider} is nu live gekoppeld.`);
+      closeIntegrationSetup();
+      await loadOverview();
+    } catch (actionError) {
+      setError(actionError?.message || 'Shopkoppeling afronden mislukt.');
+    } finally {
+      setActioningId('');
+    }
+  };
+
   const assistants = overview?.assistants || [];
   const summary = overview?.summary;
 
@@ -195,6 +269,7 @@ const AdminConsole = () => {
         <SummaryCard icon={<UserRound size={20} />} label="Assistenten" value={summary?.totalAssistants || 0} />
         <SummaryCard icon={<CreditCard size={20} />} label="Wachten op betaling" value={summary?.awaitingPayment || 0} tone="warm" />
         <SummaryCard icon={<PlayCircle size={20} />} label="Provisioning nodig" value={summary?.needsProvisioning || 0} tone="soft" />
+        <SummaryCard icon={<Link2 size={20} />} label="Shop setup open" value={summary?.pendingShopRequests || 0} tone="warm" />
         <SummaryCard icon={<Store size={20} />} label="Live assistenten" value={summary?.liveAssistants || 0} tone="success" />
       </div>
 
@@ -265,6 +340,136 @@ const AdminConsole = () => {
                     <strong>{assistant.usage?.minutesUsed || 0} min • {assistant.usage?.tasksUsed || 0} tasks</strong>
                   </div>
                 </div>
+
+                {assistant.integrations?.length > 0 && (
+                  <div className="admin-integrations-list">
+                    {assistant.integrations.map((integration) => {
+                      const isPendingSetup = ['pending_setup', 'error'].includes(integration.status);
+                      const isEditing =
+                        editingIntegrationKey === `${assistant.assistantId}:${integration.provider}`;
+
+                      return (
+                        <div key={`${assistant.assistantId}-${integration.provider}`} className="glass-panel admin-integration-card">
+                          <div className="admin-customer-top" style={{ marginBottom: '0.6rem' }}>
+                            <div>
+                              <h4>{PROVIDER_LABELS[integration.provider] || integration.provider}</h4>
+                              <p className="text-muted">{integration.storeUrl}</p>
+                            </div>
+
+                            <div className="admin-chip-row">
+                              <span className={`admin-chip state-${integration.status}`}>{integration.status}</span>
+                              <span className="admin-chip neutral">{integration.setupMode || 'self_service'}</span>
+                            </div>
+                          </div>
+
+                          {integration.contactEmail && (
+                            <p className="text-muted">Contact: {integration.contactEmail}</p>
+                          )}
+                          {integration.setupNotes && (
+                            <p className="text-muted">Notitie: {integration.setupNotes}</p>
+                          )}
+
+                          {isPendingSetup && (
+                            <div className="admin-action-buttons" style={{ marginTop: '0.75rem' }}>
+                              <button
+                                className="btn-secondary"
+                                onClick={() => openIntegrationSetup(assistant, integration)}
+                                disabled={Boolean(actioningId)}
+                              >
+                                <Link2 size={14} /> Koppeling afronden
+                              </button>
+                            </div>
+                          )}
+
+                          {isEditing && (
+                            <div className="admin-integration-form">
+                              <label>
+                                Store URL
+                                <input
+                                  type="text"
+                                  className="glass-input"
+                                  value={integrationForm.storeUrl}
+                                  onChange={(event) =>
+                                    setIntegrationForm((prev) => ({ ...prev, storeUrl: event.target.value }))}
+                                />
+                              </label>
+
+                              {integrationForm.provider === 'shopify' && (
+                                <label>
+                                  Shopify Access Token
+                                  <input
+                                    type="password"
+                                    className="glass-input"
+                                    value={integrationForm.accessToken}
+                                    onChange={(event) =>
+                                      setIntegrationForm((prev) => ({ ...prev, accessToken: event.target.value }))}
+                                  />
+                                </label>
+                              )}
+
+                              {integrationForm.provider === 'prestashop' && (
+                                <label>
+                                  PrestaShop API Key
+                                  <input
+                                    type="password"
+                                    className="glass-input"
+                                    value={integrationForm.apiKey}
+                                    onChange={(event) =>
+                                      setIntegrationForm((prev) => ({ ...prev, apiKey: event.target.value }))}
+                                  />
+                                </label>
+                              )}
+
+                              {integrationForm.provider === 'woocommerce' && (
+                                <>
+                                  <label>
+                                    WooCommerce Consumer Key
+                                    <input
+                                      type="password"
+                                      className="glass-input"
+                                      value={integrationForm.apiKey}
+                                      onChange={(event) =>
+                                        setIntegrationForm((prev) => ({ ...prev, apiKey: event.target.value }))}
+                                    />
+                                  </label>
+                                  <label>
+                                    WooCommerce Consumer Secret
+                                    <input
+                                      type="password"
+                                      className="glass-input"
+                                      value={integrationForm.apiSecret}
+                                      onChange={(event) =>
+                                        setIntegrationForm((prev) => ({ ...prev, apiSecret: event.target.value }))}
+                                    />
+                                  </label>
+                                </>
+                              )}
+
+                              <label>
+                                Admin notitie
+                                <textarea
+                                  className="glass-input admin-inline-textarea"
+                                  value={integrationForm.adminNotes}
+                                  onChange={(event) =>
+                                    setIntegrationForm((prev) => ({ ...prev, adminNotes: event.target.value }))}
+                                />
+                              </label>
+
+                              <div className="admin-action-buttons">
+                                <button className="btn-primary" onClick={completeIntegrationSetup} disabled={Boolean(actioningId)}>
+                                  <CheckCircle2 size={14} /> {actioningId ? 'Bezig...' : 'Opslaan en activeren'}
+                                </button>
+                                <button className="btn-secondary" onClick={closeIntegrationSetup} disabled={Boolean(actioningId)}>
+                                  Sluiten
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {assistant.latestProvisioningJob?.errorMessage && (
                   <div className="glass-panel admin-inline-warning">

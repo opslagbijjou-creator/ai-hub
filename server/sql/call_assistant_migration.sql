@@ -94,7 +94,7 @@ create table if not exists public.commerce_integrations (
   assistant_id uuid not null references public.assistants (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
   provider text not null,
-  status text not null default 'connected',
+  status text not null default 'pending_setup',
   store_url text not null,
   access_token text,
   api_key text,
@@ -105,9 +105,25 @@ create table if not exists public.commerce_integrations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint commerce_integrations_provider_check check (provider in ('shopify', 'prestashop', 'woocommerce')),
-  constraint commerce_integrations_status_check check (status in ('connected', 'disconnected', 'error')),
+  constraint commerce_integrations_status_check check (status in ('connected', 'pending_setup', 'disconnected', 'error')),
   unique (assistant_id, provider)
 );
+
+alter table public.commerce_integrations add column if not exists metadata jsonb;
+
+update public.commerce_integrations
+set metadata = coalesce(metadata, '{}'::jsonb);
+
+alter table public.commerce_integrations
+  alter column metadata set default '{}'::jsonb,
+  alter column status set default 'pending_setup';
+
+alter table public.commerce_integrations
+  drop constraint if exists commerce_integrations_status_check;
+
+alter table public.commerce_integrations
+  add constraint commerce_integrations_status_check
+  check (status in ('connected', 'pending_setup', 'disconnected', 'error'));
 
 create index if not exists commerce_integrations_assistant_idx
   on public.commerce_integrations (assistant_id, status, updated_at desc);

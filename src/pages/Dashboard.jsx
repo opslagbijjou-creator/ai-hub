@@ -1,10 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import {
   Activity,
+  ArrowRight,
   BookOpen,
+  Bot,
+  CheckCircle2,
+  ClipboardList,
   CreditCard,
   Link2,
+  Mail,
   PackageSearch,
   Phone,
   PhoneCall,
@@ -37,6 +42,38 @@ const StatusPill = ({ label, value }) => (
   >
     <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{label}</span>
     <strong style={{ fontSize: '0.82rem' }}>{value || '-'}</strong>
+  </div>
+);
+
+const PROVIDER_LABELS = {
+  shopify: 'Shopify',
+  prestashop: 'PrestaShop',
+  woocommerce: 'WooCommerce'
+};
+
+const INTEGRATION_STATUS_LABELS = {
+  connected: 'Live gekoppeld',
+  pending_setup: 'Wij koppelen dit voor je',
+  disconnected: 'Losgekoppeld',
+  error: 'Actie nodig'
+};
+
+const SetupStepCard = ({ title, description, done, tone = 'default' }) => (
+  <div className={`setup-step-card ${done ? 'is-done' : ''} tone-${tone}`}>
+    <div className="setup-step-icon">
+      <CheckCircle2 size={18} />
+    </div>
+    <div>
+      <strong>{title}</strong>
+      <p>{description}</p>
+    </div>
+  </div>
+);
+
+const DetailRow = ({ label, value }) => (
+  <div className="setup-detail-row">
+    <span>{label}</span>
+    <strong>{value || '-'}</strong>
   </div>
 );
 
@@ -145,7 +182,10 @@ const Overview = () => {
   const [integrations, setIntegrations] = useState([]);
   const [integrationDraft, setIntegrationDraft] = useState({
     provider: 'shopify',
+    mode: 'concierge',
     storeUrl: '',
+    contactEmail: '',
+    setupNotes: '',
     accessToken: '',
     apiKey: '',
     apiSecret: ''
@@ -307,18 +347,21 @@ const Overview = () => {
     try {
       const payload = {
         provider: integrationDraft.provider,
-        storeUrl: integrationDraft.storeUrl
+        storeUrl: integrationDraft.storeUrl,
+        mode: integrationDraft.mode,
+        contactEmail: integrationDraft.contactEmail,
+        setupNotes: integrationDraft.setupNotes
       };
 
-      if (integrationDraft.provider === 'shopify') {
+      if (integrationDraft.mode === 'self_service' && integrationDraft.provider === 'shopify') {
         payload.accessToken = integrationDraft.accessToken;
       }
 
-      if (integrationDraft.provider === 'prestashop') {
+      if (integrationDraft.mode === 'self_service' && integrationDraft.provider === 'prestashop') {
         payload.apiKey = integrationDraft.apiKey;
       }
 
-      if (integrationDraft.provider === 'woocommerce') {
+      if (integrationDraft.mode === 'self_service' && integrationDraft.provider === 'woocommerce') {
         payload.apiKey = integrationDraft.apiKey;
         payload.apiSecret = integrationDraft.apiSecret;
       }
@@ -333,9 +376,16 @@ const Overview = () => {
         throw new Error(data?.error || 'Koppeling opslaan mislukt.');
       }
 
-      setIntegrationNotice(`${integrationDraft.provider} is gekoppeld.`);
+      setIntegrationNotice(
+        data?.mode === 'concierge'
+          ? `${PROVIDER_LABELS[integrationDraft.provider] || integrationDraft.provider} staat klaar. Wij koppelen dit voor je op de achtergrond.`
+          : `${PROVIDER_LABELS[integrationDraft.provider] || integrationDraft.provider} is direct gekoppeld.`
+      );
       setIntegrationDraft((prev) => ({
         ...prev,
+        storeUrl: '',
+        contactEmail: prev.contactEmail,
+        setupNotes: '',
         accessToken: '',
         apiKey: '',
         apiSecret: ''
@@ -407,20 +457,131 @@ const Overview = () => {
     loadData();
   }, [loadData]);
 
+  const commerceSectionRef = useRef(null);
   const usage = usageSummary?.usage;
   const connectedIntegrations = integrations.filter((entry) => entry.status === 'connected');
+  const pendingIntegrations = integrations.filter((entry) => entry.status === 'pending_setup');
+  const companyName =
+    assistantState?.profile?.company_name || assistantState?.assistant?.display_name || assistantConfig?.companyName || 'je bedrijf';
+  const hasBusinessProfile = Boolean(
+    assistantState?.profile?.company_name &&
+      (assistantState?.profile?.goals || assistantState?.profile?.opening_hours || assistantState?.profile?.pricing)
+  );
+  const hasVoiceAndNumber = Boolean(assistantState?.voice?.voice_key && assistantState?.number?.e164);
+  const hasCommerceFlow = Boolean(connectedIntegrations.length || pendingIntegrations.length);
+  const isInvoiceRequested = ['invoice_sent', 'paid_approved', 'active', 'past_due'].includes(
+    assistantState?.latestInvoice?.status || assistantState?.assistant?.billing_status || ''
+  );
+  const isLive = assistantState?.assistant?.live_status === 'live';
+  const setupSteps = [
+    {
+      title: 'Bedrijfsbriefing',
+      description: hasBusinessProfile
+        ? 'Je assistent heeft genoeg context over je bedrijf.'
+        : 'Voeg bedrijfsnaam, openingstijden en doelen toe.',
+      done: hasBusinessProfile,
+      tone: 'soft'
+    },
+    {
+      title: 'Stem en nummer',
+      description: hasVoiceAndNumber
+        ? 'Stem en voorkeursnummer zijn gekozen.'
+        : 'Kies de stem en het nummer dat live moet gaan.',
+      done: hasVoiceAndNumber,
+      tone: 'warm'
+    },
+    {
+      title: 'Kennis en webshop',
+      description: connectedIntegrations.length
+        ? 'Je webshop is gekoppeld voor orderstatus.'
+        : pendingIntegrations.length
+          ? 'Wij zijn je shopkoppeling op de achtergrond aan het afronden.'
+          : 'Koppel je shop of laat ons dit voor je regelen.',
+      done: hasCommerceFlow,
+      tone: 'success'
+    },
+    {
+      title: 'Test en livegang',
+      description: isLive
+        ? 'Je assistent staat live op het gekozen nummer.'
+        : isInvoiceRequested
+          ? 'Betaling of provisioning loopt. Je kunt intussen blijven testen.'
+          : 'Test in de browser en vraag daarna activatie aan.',
+      done: isLive,
+      tone: 'default'
+    }
+  ];
+  const completedSteps = setupSteps.filter((step) => step.done).length;
+  const integrationButtonDisabled =
+    integrationSaving ||
+    !integrationDraft.storeUrl.trim() ||
+    (integrationDraft.mode === 'self_service' &&
+      ((integrationDraft.provider === 'shopify' && !integrationDraft.accessToken.trim()) ||
+        (integrationDraft.provider === 'prestashop' && !integrationDraft.apiKey.trim()) ||
+        (integrationDraft.provider === 'woocommerce' &&
+          (!integrationDraft.apiKey.trim() || !integrationDraft.apiSecret.trim()))));
+
+  const nextAction = useMemo(() => {
+    if (!hasBusinessProfile || !hasVoiceAndNumber) {
+      return {
+        eyebrow: 'Aanbevolen volgende stap',
+        title: 'Maak eerst je basis compleet',
+        description: 'Werk je briefing, stem en nummer af in de setup wizard zodat de assistent goed klinkt en de juiste antwoorden geeft.',
+        cta: 'Ga naar setup wizard',
+        actionKey: 'wizard'
+      };
+    }
+
+    if (!hasCommerceFlow) {
+      return {
+        eyebrow: 'Volgende stap',
+        title: 'Koppel je webshop zonder technisch gedoe',
+        description: 'Je klant hoeft alleen het platform en de shop-URL te kiezen. Jij rondt de technische koppeling later af in admin.',
+        cta: 'Open shop setup',
+        actionKey: 'commerce'
+      };
+    }
+
+    if (!isInvoiceRequested) {
+      return {
+        eyebrow: 'Bijna live',
+        title: 'Test je assistent en vraag activatie aan',
+        description: 'Voer nog een webtest uit en vraag daarna de factuur aan. Na goedkeuring kan het nummer live.',
+        cta: 'Vraag activatie aan',
+        actionKey: 'invoice'
+      };
+    }
+
+    if (!isLive) {
+      return {
+        eyebrow: 'Provisioning bezig',
+        title: 'Je livegang is in voorbereiding',
+        description: 'Je aanvraag staat klaar. Gebruik de webtest om scripts te finetunen terwijl provisioning of admin approval loopt.',
+        cta: 'Open Call Studio',
+        actionKey: 'studio'
+      };
+    }
+
+    return {
+      eyebrow: 'Live',
+      title: 'Je assistent staat nu live',
+      description: 'Gebruik de studio en het dashboard om gesprekken, usage en shopvragen te blijven verbeteren.',
+      cta: 'Open Call Studio',
+      actionKey: 'studio'
+    };
+  }, [hasBusinessProfile, hasCommerceFlow, hasVoiceAndNumber, isInvoiceRequested, isLive]);
 
   const stats = useMemo(
     () => [
       {
-        label: 'Minutes Used',
+        label: 'Belminuten',
         value: usage ? `${usage.minutesUsed}` : '0',
         trend: usage ? `${usage.includedMinutes} inbegrepen` : 'Geen data',
         icon: <PhoneCall size={22} />,
         iconStyle: { background: 'color-mix(in srgb, var(--primary) 20%, transparent)', color: 'var(--primary)' }
       },
       {
-        label: 'Tasks Used',
+        label: 'Taken',
         value: usage ? `${usage.tasksUsed}` : '0',
         trend: usage ? `${usage.includedTasks} inbegrepen` : 'Geen data',
         icon: <Activity size={22} />,
@@ -430,7 +591,7 @@ const Overview = () => {
         }
       },
       {
-        label: 'Expected Invoice',
+        label: 'Verwachte factuur',
         value: usage ? `€${usage.expectedInvoiceEur}` : '€0',
         trend: usage ? `Overage €${usage.overageEstimateEur}` : 'Geen data',
         icon: <CreditCard size={22} />,
@@ -441,87 +602,140 @@ const Overview = () => {
   );
 
   return (
-    <div className="dashboard-overview animate-fade-in" style={{ position: 'relative' }}>
-      <div className="dashboard-header" style={{ marginBottom: '1.2rem' }}>
-        <h1 className="font-heading">
-          Welcome back{assistantConfig?.companyName ? `, ${assistantConfig.companyName}` : ''}
-        </h1>
+    <div className="dashboard-overview dashboard-shell animate-fade-in" style={{ position: 'relative' }}>
+      <div className="dashboard-header dashboard-header-tight">
+        <span className="dashboard-eyebrow">Setup Hub</span>
+        <h1 className="font-heading">Bouw {companyName} als één rustige flow</h1>
         <p className="text-muted">
-          Call-only dashboard voor je AI assistent.
+          Geen losse blokken of technisch gedoe. Je klanten vullen alleen in wat de assistent moet weten, en koppelingen kunnen wij later voor ze afronden.
           {isAdmin ? ' Je adminconsole staat ook voor je klaar in het menu.' : ''}
         </p>
       </div>
 
       {!apiConfigured && (
-        <div className="glass-panel" style={{ padding: '0.8rem', marginBottom: '1rem', borderColor: 'rgba(245,158,11,0.45)' }}>
+        <div className="glass-panel setup-feedback setup-feedback-warn">
           {apiConfigMessage}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <StatusPill label="Live" value={assistantState?.assistant?.live_status || 'not_live'} />
-        <StatusPill label="Billing" value={assistantState?.assistant?.billing_status || 'none'} />
-        <StatusPill label="Plan" value={assistantState?.plan?.name || 'Launch'} />
-        <StatusPill
-          label="Overage"
-          value={`€${Number(assistantState?.plan?.overageMinuteEur || 0).toFixed(2)}/min`}
-        />
-        <button className="btn-secondary" onClick={loadData} disabled={loading}>
-          <RefreshCcw size={16} /> Vernieuw
-        </button>
-      </div>
-
       {error && (
-        <div className="glass-panel" style={{ padding: '0.8rem', marginBottom: '1rem', borderColor: 'rgba(239,68,68,0.45)' }}>
+        <div className="glass-panel setup-feedback setup-feedback-error">
           {error}
         </div>
       )}
 
       {invoiceNotice && (
-        <div className="glass-panel" style={{ padding: '0.8rem', marginBottom: '1rem', borderColor: 'rgba(16,185,129,0.45)' }}>
+        <div className="glass-panel setup-feedback setup-feedback-success">
           {invoiceNotice}
         </div>
       )}
 
-      <div
-        className="active-assistant-banner glass-panel"
-        style={{
-          padding: '1.25rem',
-          marginBottom: '1.5rem',
-          borderLeft: '4px solid var(--primary)',
-          background: 'color-mix(in srgb, var(--primary) 8%, transparent)'
-        }}
-      >
-        <div className="assistant-banner-row">
-          <div className="assistant-banner-main">
-            <div className="assistant-avatar">
-              <Phone size={24} color="white" />
-            </div>
-            <div>
-              <h2 className="font-heading" style={{ fontSize: '1.3rem', marginBottom: '0.3rem' }}>
-                AI Bel-Assistent
-              </h2>
-              <p className="text-muted" style={{ margin: 0 }}>
-                Nummer: <strong>{assistantState?.number?.e164 || assistantConfig?.phoneNumber || 'Nog niet gekozen'}</strong>
-              </p>
-            </div>
+      <section className="glass-panel setup-hero-card">
+        <div className="setup-hero-main">
+          <span className="dashboard-eyebrow">AI telefoonassistent</span>
+          <h2>{companyName} wordt stap voor stap live gezet</h2>
+          <p className="text-muted">
+            Je workflow is nu ingericht als: briefing, stem en nummer kiezen, shop of kennis koppelen, webtest draaien en daarna live gaan.
+          </p>
+
+          <div className="setup-pill-row">
+            <StatusPill label="Live" value={assistantState?.assistant?.live_status || 'not_live'} />
+            <StatusPill label="Billing" value={assistantState?.assistant?.billing_status || 'none'} />
+            <StatusPill label="Plan" value={assistantState?.plan?.name || 'Launch'} />
+            <StatusPill label="Nummer" value={assistantState?.number?.e164 || 'Nog niet gekozen'} />
           </div>
 
           <div className="assistant-actions">
+            <button className="btn-secondary" onClick={loadData} disabled={loading}>
+              <RefreshCcw size={16} /> Vernieuw
+            </button>
             <button className="btn-secondary" onClick={() => setShowSettings(true)}>
-              <Settings size={15} /> Instellingen
+              <Settings size={15} /> Bedrijfsinfo aanpassen
             </button>
             <button className="btn-secondary" onClick={() => navigate('/dashboard/call-studio')}>
-              <PhoneCall size={15} /> Web Test
+              <PhoneCall size={15} /> Webtest openen
             </button>
             <button className="btn-primary" onClick={requestInvoice} disabled={invoiceLoading || loading}>
-              <CreditCard size={15} /> {invoiceLoading ? 'Bezig...' : 'Factuur Aanvragen'}
+              <CreditCard size={15} /> {invoiceLoading ? 'Bezig...' : 'Activatie aanvragen'}
             </button>
           </div>
         </div>
-      </div>
 
-      <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
+        <div className="setup-hero-aside">
+          <div className="setup-hero-progress">
+            <span>Setup voortgang</span>
+            <strong>{completedSteps}/4 klaar</strong>
+          </div>
+          <p className="text-muted">
+            {completedSteps < 2
+              ? 'Vul eerst je briefing en basisinstellingen in.'
+              : completedSteps < 4
+                ? 'Je bent dichtbij. Rond je koppelingen en livegang af.'
+                : 'Alles staat goed. Je kunt nu vooral finetunen en volgen.'}
+          </p>
+          <div className="setup-micro-stats">
+            <div>
+              <span>Stem</span>
+              <strong>{assistantState?.voice?.display_name || 'Nog niet gekozen'}</strong>
+            </div>
+            <div>
+              <span>Shop status</span>
+              <strong>
+                {connectedIntegrations.length
+                  ? `${connectedIntegrations.length} live`
+                  : pendingIntegrations.length
+                    ? `${pendingIntegrations.length} in behandeling`
+                    : 'Nog niet gestart'}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="setup-top-grid">
+        <div className="glass-panel setup-journey-panel">
+          <div className="setup-section-header">
+            <div>
+              <h3><ClipboardList size={18} /> Setup flow</h3>
+              <p className="text-muted">Iedere fase heeft één duidelijke bedoeling en één logische vervolgstap.</p>
+            </div>
+          </div>
+
+          <div className="setup-step-grid">
+            {setupSteps.map((step) => (
+              <SetupStepCard
+                key={step.title}
+                title={step.title}
+                description={step.description}
+                done={step.done}
+                tone={step.tone}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-panel setup-next-panel">
+          <span className="dashboard-eyebrow">{nextAction.eyebrow}</span>
+          <h3>{nextAction.title}</h3>
+          <p className="text-muted">{nextAction.description}</p>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              if (nextAction.actionKey === 'wizard') navigate('/setup-wizard');
+              if (nextAction.actionKey === 'commerce') {
+                commerceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+              if (nextAction.actionKey === 'invoice') requestInvoice();
+              if (nextAction.actionKey === 'studio') navigate('/dashboard/call-studio');
+            }}
+            disabled={invoiceLoading || loading}
+          >
+            {nextAction.cta} <ArrowRight size={16} />
+          </button>
+        </div>
+      </section>
+
+      <div className="stats-grid setup-stats-grid">
         {stats.map((stat) => (
           <div key={stat.label} className="stat-card glass-panel">
             <div className="stat-icon" style={stat.iconStyle}>
@@ -536,101 +750,222 @@ const Overview = () => {
         ))}
       </div>
 
-      <div className="glass-panel commerce-panel">
-        <div className="commerce-panel-header">
-          <h3 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
-            <ShoppingCart size={18} /> Webshop koppelingen
-          </h3>
-          <p className="text-muted">
-            Koppel Shopify, PrestaShop of WooCommerce zodat de assistent orderstatus kan ophalen tijdens gesprekken.
-          </p>
+      <section className="setup-summary-grid">
+        <div className="glass-panel summary-panel">
+          <div className="setup-section-header">
+            <div>
+              <h3><BookOpen size={18} /> Bedrijfsbriefing</h3>
+              <p className="text-muted">Dit is de context waar je assistent tijdens gesprekken op leunt.</p>
+            </div>
+            <button className="btn-secondary" onClick={() => setShowSettings(true)}>
+              <Settings size={14} /> Wijzigen
+            </button>
+          </div>
+
+          <div className="setup-detail-list">
+            <DetailRow label="Bedrijfsnaam" value={assistantState?.profile?.company_name || 'Nog niet ingevuld'} />
+            <DetailRow label="Doel van gesprek" value={assistantState?.profile?.goals || 'Nog niet ingevuld'} />
+            <DetailRow label="Openingstijden" value={assistantState?.profile?.opening_hours || 'Nog niet ingevuld'} />
+            <DetailRow label="Prijzen" value={assistantState?.profile?.pricing || 'Nog niet ingevuld'} />
+            <DetailRow label="Stem" value={assistantState?.voice?.display_name || 'Nog niet gekozen'} />
+            <DetailRow label="Nummer" value={assistantState?.number?.e164 || 'Nog niet gekozen'} />
+          </div>
+        </div>
+
+        <div className="glass-panel summary-panel launch-panel">
+          <div className="setup-section-header">
+            <div>
+              <h3><Bot size={18} /> Test en livegang</h3>
+              <p className="text-muted">Zo beweegt je assistent van webtest naar echt telefoonnummer.</p>
+            </div>
+          </div>
+
+          <div className="launch-flow-list">
+            <div className={`launch-flow-item ${assistantState?.latestInvoice ? 'is-active' : ''}`}>
+              <span>1</span>
+              <div>
+                <strong>Activatie aanvragen</strong>
+                <p>{assistantState?.latestInvoice?.status || 'Nog geen aanvraag verstuurd'}</p>
+              </div>
+            </div>
+            <div className={`launch-flow-item ${assistantState?.assistant?.billing_status === 'paid_approved' ? 'is-active' : ''}`}>
+              <span>2</span>
+              <div>
+                <strong>Betaalgoedkeuring</strong>
+                <p>{assistantState?.assistant?.billing_status || 'Wacht op goedkeuring'}</p>
+              </div>
+            </div>
+            <div className={`launch-flow-item ${assistantState?.latestProvisioningJob?.status ? 'is-active' : ''}`}>
+              <span>3</span>
+              <div>
+                <strong>Provisioning</strong>
+                <p>{assistantState?.latestProvisioningJob?.status || 'Nog niet gestart'}</p>
+              </div>
+            </div>
+            <div className={`launch-flow-item ${isLive ? 'is-active' : ''}`}>
+              <span>4</span>
+              <div>
+                <strong>Live op nummer</strong>
+                <p>{assistantState?.assistant?.live_status || 'not_live'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section ref={commerceSectionRef} className="glass-panel commerce-hub">
+        <div className="setup-section-header">
+          <div>
+            <h3><ShoppingCart size={18} /> Webshop en orderstatus</h3>
+            <p className="text-muted">
+              Klanten hoeven standaard geen API-sleutels te snappen. Kies hoe de koppeling geregeld wordt en laat de rest op de achtergrond afmaken.
+            </p>
+          </div>
         </div>
 
         {integrationNotice && (
-          <div className="glass-panel" style={{ padding: '0.7rem 0.8rem', marginBottom: '0.85rem' }}>
+          <div className="glass-panel commerce-inline-notice">
             {integrationNotice}
           </div>
         )}
 
-        <div className="commerce-grid">
-          <div className="commerce-connect">
-            <label>
-              Provider
-              <select
-                className="glass-input"
-                value={integrationDraft.provider}
-                onChange={(event) =>
+        <div className="commerce-flow-grid">
+          <div className="commerce-request-card">
+            <div className="commerce-mode-switch">
+              <button
+                className={`commerce-mode-pill ${integrationDraft.mode === 'concierge' ? 'active' : ''}`}
+                onClick={() =>
                   setIntegrationDraft((prev) => ({
                     ...prev,
-                    provider: event.target.value,
+                    mode: 'concierge',
                     accessToken: '',
                     apiKey: '',
                     apiSecret: ''
                   }))}
               >
-                <option value="shopify">Shopify</option>
-                <option value="prestashop">PrestaShop</option>
-                <option value="woocommerce">WooCommerce</option>
-              </select>
-            </label>
-
-            <label>
-              Store URL
-              <input
-                type="text"
-                className="glass-input"
-                placeholder="https://jouwshop.nl"
-                value={integrationDraft.storeUrl}
-                onChange={(event) =>
+                Wij regelen dit
+              </button>
+              <button
+                className={`commerce-mode-pill ${integrationDraft.mode === 'self_service' ? 'active' : ''}`}
+                onClick={() =>
                   setIntegrationDraft((prev) => ({
                     ...prev,
-                    storeUrl: event.target.value
+                    mode: 'self_service'
                   }))}
-              />
-            </label>
+              >
+                Ik koppel het zelf
+              </button>
+            </div>
 
-            {integrationDraft.provider === 'shopify' && (
+            <div className="commerce-helper-card">
+              <strong>
+                {integrationDraft.mode === 'concierge'
+                  ? 'Rustige flow voor niet-technische klanten'
+                  : 'Expertmodus voor directe koppeling'}
+              </strong>
+              <p className="text-muted">
+                {integrationDraft.mode === 'concierge'
+                  ? 'Je klant kiest alleen het platform, de shop-URL en eventueel een notitie. Jij of admin rondt de API-koppeling later af.'
+                  : 'Gebruik dit alleen als je de juiste API-gegevens al bij de hand hebt.'}
+              </p>
+            </div>
+
+            <div className="commerce-form-grid">
               <label>
-                Shopify Admin Access Token
-                <input
-                  type="password"
+                Platform
+                <select
                   className="glass-input"
-                  placeholder="shpat_..."
-                  value={integrationDraft.accessToken}
+                  value={integrationDraft.provider}
                   onChange={(event) =>
                     setIntegrationDraft((prev) => ({
                       ...prev,
-                      accessToken: event.target.value
+                      provider: event.target.value,
+                      accessToken: '',
+                      apiKey: '',
+                      apiSecret: ''
                     }))}
-                />
+                >
+                  <option value="shopify">Shopify</option>
+                  <option value="prestashop">PrestaShop</option>
+                  <option value="woocommerce">WooCommerce</option>
+                </select>
               </label>
-            )}
 
-            {integrationDraft.provider === 'prestashop' && (
               <label>
-                PrestaShop API Key
+                Shop URL
                 <input
-                  type="password"
+                  type="text"
                   className="glass-input"
-                  placeholder="API sleutel"
-                  value={integrationDraft.apiKey}
+                  placeholder="https://jouwshop.nl"
+                  value={integrationDraft.storeUrl}
                   onChange={(event) =>
                     setIntegrationDraft((prev) => ({
                       ...prev,
-                      apiKey: event.target.value
+                      storeUrl: event.target.value
                     }))}
                 />
               </label>
-            )}
 
-            {integrationDraft.provider === 'woocommerce' && (
-              <>
+              {integrationDraft.mode === 'concierge' && (
+                <>
+                  <label>
+                    Contact e-mail
+                    <div className="input-with-icon">
+                      <Mail size={16} />
+                      <input
+                        type="email"
+                        className="glass-input"
+                        placeholder="mail@bedrijf.nl"
+                        value={integrationDraft.contactEmail}
+                        onChange={(event) =>
+                          setIntegrationDraft((prev) => ({
+                            ...prev,
+                            contactEmail: event.target.value
+                          }))}
+                      />
+                    </div>
+                  </label>
+
+                  <label>
+                    Korte notitie voor setup
+                    <textarea
+                      className="glass-input glass-textarea"
+                      placeholder="Bijv. wij willen vooral orderstatus en verzendinformatie kunnen beantwoorden."
+                      value={integrationDraft.setupNotes}
+                      onChange={(event) =>
+                        setIntegrationDraft((prev) => ({
+                          ...prev,
+                          setupNotes: event.target.value
+                        }))}
+                    />
+                  </label>
+                </>
+              )}
+
+              {integrationDraft.mode === 'self_service' && integrationDraft.provider === 'shopify' && (
                 <label>
-                  WooCommerce Consumer Key
+                  Shopify Admin Access Token
                   <input
                     type="password"
                     className="glass-input"
-                    placeholder="ck_..."
+                    placeholder="shpat_..."
+                    value={integrationDraft.accessToken}
+                    onChange={(event) =>
+                      setIntegrationDraft((prev) => ({
+                        ...prev,
+                        accessToken: event.target.value
+                      }))}
+                  />
+                </label>
+              )}
+
+              {integrationDraft.mode === 'self_service' && integrationDraft.provider === 'prestashop' && (
+                <label>
+                  PrestaShop API Key
+                  <input
+                    type="password"
+                    className="glass-input"
+                    placeholder="API sleutel"
                     value={integrationDraft.apiKey}
                     onChange={(event) =>
                       setIntegrationDraft((prev) => ({
@@ -639,62 +974,111 @@ const Overview = () => {
                       }))}
                   />
                 </label>
+              )}
 
-                <label>
-                  WooCommerce Consumer Secret
-                  <input
-                    type="password"
-                    className="glass-input"
-                    placeholder="cs_..."
-                    value={integrationDraft.apiSecret}
-                    onChange={(event) =>
-                      setIntegrationDraft((prev) => ({
-                        ...prev,
-                        apiSecret: event.target.value
-                      }))}
-                  />
-                </label>
-              </>
-            )}
+              {integrationDraft.mode === 'self_service' && integrationDraft.provider === 'woocommerce' && (
+                <>
+                  <label>
+                    WooCommerce Consumer Key
+                    <input
+                      type="password"
+                      className="glass-input"
+                      placeholder="ck_..."
+                      value={integrationDraft.apiKey}
+                      onChange={(event) =>
+                        setIntegrationDraft((prev) => ({
+                          ...prev,
+                          apiKey: event.target.value
+                        }))}
+                    />
+                  </label>
+
+                  <label>
+                    WooCommerce Consumer Secret
+                    <input
+                      type="password"
+                      className="glass-input"
+                      placeholder="cs_..."
+                      value={integrationDraft.apiSecret}
+                      onChange={(event) =>
+                        setIntegrationDraft((prev) => ({
+                          ...prev,
+                          apiSecret: event.target.value
+                        }))}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
 
             <button
               className="btn-primary"
-              disabled={integrationSaving || !integrationDraft.storeUrl.trim()}
+              disabled={integrationButtonDisabled}
               onClick={connectIntegration}
             >
               <PlugZap size={15} />
-              {integrationSaving ? 'Opslaan...' : 'Koppeling opslaan'}
+              {integrationSaving
+                ? 'Bezig...'
+                : integrationDraft.mode === 'concierge'
+                  ? 'Vraag koppeling aan'
+                  : 'Koppel direct'}
             </button>
           </div>
 
-          <div className="commerce-status">
-            <h4 style={{ marginBottom: '0.55rem' }}>Actieve koppelingen</h4>
+          <div className="commerce-status-column">
+            <div className="commerce-status-group">
+              <h4>In behandeling</h4>
+              {pendingIntegrations.length === 0 && (
+                <p className="text-muted">Nog geen concierge-verzoeken open.</p>
+              )}
 
-            {connectedIntegrations.length === 0 && (
-              <p className="text-muted">Nog geen actieve webshop koppeling.</p>
-            )}
-
-            {connectedIntegrations.map((integration) => (
-              <div key={integration.id} className="glass-panel commerce-integration-item">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  <Link2 size={15} />
-                  <strong>{String(integration.provider || '').toUpperCase()}</strong>
+              {pendingIntegrations.map((integration) => (
+                <div key={integration.id} className="glass-panel commerce-state-card pending">
+                  <div className="commerce-state-top">
+                    <strong>{PROVIDER_LABELS[integration.provider] || integration.provider}</strong>
+                    <span>{INTEGRATION_STATUS_LABELS[integration.status] || integration.status}</span>
+                  </div>
+                  <p className="text-muted">{integration.storeUrl}</p>
+                  {integration.contactEmail && <p className="text-muted">Contact: {integration.contactEmail}</p>}
+                  {integration.setupNotes && <p className="text-muted">Notitie: {integration.setupNotes}</p>}
                 </div>
-                <span className="text-muted">{integration.storeUrl}</span>
-                <button
-                  className="btn-secondary"
-                  onClick={() => disconnectIntegration(integration.provider)}
-                  disabled={integrationSaving}
-                >
-                  <Unplug size={14} /> Loskoppelen
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <div className="commerce-status-group">
+              <h4>Actieve koppelingen</h4>
+              {connectedIntegrations.length === 0 && (
+                <p className="text-muted">Nog geen actieve webshop koppeling.</p>
+              )}
+
+              {connectedIntegrations.map((integration) => (
+                <div key={integration.id} className="glass-panel commerce-state-card connected">
+                  <div className="commerce-state-top">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <Link2 size={15} />
+                      <strong>{PROVIDER_LABELS[integration.provider] || integration.provider}</strong>
+                    </div>
+                    <span>{INTEGRATION_STATUS_LABELS[integration.status] || integration.status}</span>
+                  </div>
+                  <p className="text-muted">{integration.storeUrl}</p>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => disconnectIntegration(integration.provider)}
+                    disabled={integrationSaving}
+                  >
+                    <Unplug size={14} /> Loskoppelen
+                  </button>
+                </div>
+              ))}
+            </div>
 
             <div className="glass-panel commerce-lookup-box">
               <h4 style={{ marginBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                 <PackageSearch size={16} /> Orderstatus test
               </h4>
+              <p className="text-muted" style={{ marginBottom: '0.75rem' }}>
+                Test hoe de assistent straks een ordervraag oppakt. Dit werkt zodra minimaal één koppeling live staat.
+              </p>
 
               <div className="commerce-lookup-fields">
                 <select
@@ -731,18 +1115,20 @@ const Overview = () => {
               <button
                 className="btn-secondary"
                 onClick={testOrderLookup}
-                disabled={orderLookupLoading || !orderLookupDraft.orderReference.trim()}
+                disabled={orderLookupLoading || !orderLookupDraft.orderReference.trim() || connectedIntegrations.length === 0}
               >
                 <RefreshCcw size={14} /> {orderLookupLoading ? 'Zoeken...' : 'Check orderstatus'}
               </button>
+
+              {connectedIntegrations.length === 0 && (
+                <p className="text-muted commerce-empty-note">Deze test wordt actief zodra een shop live is gekoppeld.</p>
+              )}
 
               {orderLookupResult && (
                 <div className="glass-panel commerce-lookup-result">
                   {orderLookupResult?.found ? (
                     <p>
-                      <strong>{orderLookupResult?.order?.orderReference}</strong> -
-                      {' '}
-                      {orderLookupResult?.order?.status}
+                      <strong>{orderLookupResult?.order?.orderReference}</strong> - {orderLookupResult?.order?.status}
                       {orderLookupResult?.order?.paymentStatus
                         ? ` (betaling: ${orderLookupResult.order.paymentStatus})`
                         : ''}
@@ -755,29 +1141,7 @@ const Overview = () => {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="chart-section glass-panel" style={{ marginBottom: 0 }}>
-        <h3 style={{ marginBottom: '0.85rem' }}>Provisioning flow</h3>
-        <p className="text-muted" style={{ marginBottom: '1rem' }}>
-          invoice_sent -&gt; paid_approved -&gt; provisioning -&gt; live
-        </p>
-        <div className="mock-chart-large" style={{ height: '140px' }}>
-          <div className="bar" style={{ height: assistantState?.latestInvoice ? '80%' : '10%' }}></div>
-          <div className="bar" style={{ height: assistantState?.assistant?.billing_status === 'paid_approved' ? '85%' : '15%' }}></div>
-          <div
-            className="bar"
-            style={{
-              height:
-                assistantState?.latestProvisioningJob?.status === 'processing' ||
-                assistantState?.latestProvisioningJob?.status === 'success'
-                  ? '90%'
-                  : '20%'
-            }}
-          ></div>
-          <div className="bar" style={{ height: assistantState?.assistant?.live_status === 'live' ? '100%' : '25%' }}></div>
-        </div>
-      </div>
+      </section>
 
       {showSettings && (
         <div className="modal-overlay">

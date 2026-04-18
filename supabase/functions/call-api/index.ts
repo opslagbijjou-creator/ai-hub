@@ -593,6 +593,11 @@ function normalizeOrderReference(value: unknown) {
 }
 
 function sanitizeIntegration(integration: Record<string, any>) {
+  const metadata =
+    integration?.metadata && typeof integration.metadata === "object" && !Array.isArray(integration.metadata)
+      ? integration.metadata
+      : {};
+
   return {
     id: integration.id,
     provider: integration.provider,
@@ -603,6 +608,12 @@ function sanitizeIntegration(integration: Record<string, any>) {
     hasApiSecret: Boolean(integration.api_secret),
     lastSyncAt: integration.last_sync_at || null,
     updatedAt: integration.updated_at || null,
+    setupMode: safeText(metadata.setupMode, "self_service"),
+    setupNotes: safeText(metadata.setupNotes),
+    contactEmail: safeText(metadata.contactEmail),
+    requestedAt: safeText(metadata.requestedAt || integration.created_at),
+    completedAt: safeText(metadata.completedAt),
+    managedBy: safeText(metadata.managedBy),
   };
 }
 
@@ -1118,6 +1129,7 @@ async function handleAdminOverview(req: Request) {
           awaitingPayment: 0,
           needsProvisioning: 0,
           connectedShops: 0,
+          pendingShopRequests: 0,
           providerBreakdown: {},
         },
         assistants: [],
@@ -1300,6 +1312,9 @@ async function handleAdminOverview(req: Request) {
         ["queued", "failed", "needs_number_reselect"].includes(String(entry.latestProvisioningJob?.status || ""))
       ).length,
       connectedShops: items.filter((entry) => entry.connectedProviders.length > 0).length,
+      pendingShopRequests: items.filter((entry) =>
+        entry.integrations.some((integration: Record<string, any>) => integration.status === "pending_setup")
+      ).length,
       providerBreakdown,
     };
 
@@ -1974,6 +1989,16 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
     const apiKey = safeText(body.apiKey || body.api_key);
     const apiSecret = safeText(body.apiSecret || body.api_secret);
     const webhookSecret = safeText(body.webhookSecret || body.webhook_secret);
+    const requestedModeRaw = safeText(body.mode || body.setupMode);
+    const setupMode =
+      requestedModeRaw === "self_service" ||
+      accessTokenValue ||
+      apiKey ||
+      apiSecret
+        ? "self_service"
+        : "concierge";
+    const contactEmail = safeText(body.contactEmail || body.contact_email || user?.email);
+    const setupNotes = safeText(body.setupNotes || body.notes || body.note);
 
     if (!provider) {
       return errorJson("provider is verplicht (shopify, prestashop, woocommerce).", 400);
@@ -1982,15 +2007,23 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
       return errorJson("storeUrl is verplicht.", 400);
     }
 
-    if (provider === "shopify" && !accessTokenValue) {
+    if (setupMode === "self_service" && provider === "shopify" && !accessTokenValue) {
       return errorJson("Voor Shopify is accessToken verplicht.", 400);
     }
-    if (provider === "prestashop" && !apiKey) {
+    if (setupMode === "self_service" && provider === "prestashop" && !apiKey) {
       return errorJson("Voor PrestaShop is apiKey verplicht.", 400);
     }
-    if (provider === "woocommerce" && (!apiKey || !apiSecret)) {
+    if (setupMode === "self_service" && provider === "woocommerce" && (!apiKey || !apiSecret)) {
       return errorJson("Voor WooCommerce zijn consumer key en consumer secret verplicht.", 400);
     }
+
+    const metadata = {
+      setupMode,
+      contactEmail,
+      setupNotes,
+      requestedAt: nowIso(),
+      managedBy: setupMode === "concierge" ? "admin_after_request" : "self_service",
+    };
 
     const { data: saved, error } = await dbClient
       .from("commerce_integrations")
@@ -1999,13 +2032,14 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
           assistant_id: assistant.id,
           user_id: user.id,
           provider,
-          status: "connected",
+          status: setupMode === "self_service" ? "connected" : "pending_setup",
           store_url: storeUrl,
-          access_token: accessTokenValue || null,
-          api_key: apiKey || null,
-          api_secret: apiSecret || null,
+          access_token: setupMode === "self_service" ? accessTokenValue || null : null,
+          api_key: setupMode === "self_service" ? apiKey || null : null,
+          api_secret: setupMode === "self_service" ? apiSecret || null : null,
           webhook_secret: webhookSecret || null,
-          metadata: {},
+          metadata,
+          last_sync_at: setupMode === "self_service" ? nowIso() : null,
           updated_at: nowIso(),
         },
         { onConflict: "assistant_id,provider" },
@@ -2017,6 +2051,7 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
 
     return json({
       success: true,
+      mode: setupMode,
       integration: sanitizeIntegration(saved),
     });
   } catch (error) {
@@ -2054,6 +2089,122 @@ async function handleIntegrationDisconnect(req: Request, user: any, accessToken:
     return json({
       success: true,
       integration: sanitizeIntegration(row),
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleAdminIntegrationComplete(req: Request) {
+  const admin = await requireAdminAccess(req);
+  if (admin.error) return admin.error;
+
+  try {
+    assertServiceRoleAvailable();
+    const dbClient = getDbClient(null);
+    const body = await parseBody(req) as Record<string, unknown>;
+
+    const integrationId = safeText(body.integrationId);
+    const assistantId = safeText(body.assistantId);
+    const provider = normalizeProvider(body.provider);
+    const storeUrl = normalizeStoreUrl(body.storeUrl || body.store_url);
+    const accessTokenValue = safeText(body.accessToken || body.access_token);
+    const apiKey = safeText(body.apiKey || body.api_key);
+    const apiSecret = safeText(body.apiSecret || body.api_secret);
+    const webhookSecret = safeText(body.webhookSecret || body.webhook_secret);
+    const contactEmail = safeText(body.contactEmail || body.contact_email);
+    const setupNotes = safeText(body.setupNotes || body.notes);
+    const adminNotes = safeText(body.adminNotes || body.admin_notes);
+
+    let existingIntegration: Record<string, any> | null = null;
+
+    if (integrationId) {
+      const { data, error } = await dbClient.from("commerce_integrations").select("*").eq("id", integrationId).maybeSingle();
+      if (error) throw error;
+      existingIntegration = data || null;
+    } else if (assistantId && provider) {
+      const { data, error } = await dbClient
+        .from("commerce_integrations")
+        .select("*")
+        .eq("assistant_id", assistantId)
+        .eq("provider", provider)
+        .maybeSingle();
+      if (error) throw error;
+      existingIntegration = data || null;
+    }
+
+    const resolvedAssistantId = safeText(existingIntegration?.assistant_id || assistantId);
+    const resolvedProvider = normalizeProvider(existingIntegration?.provider || provider);
+    const resolvedStoreUrl = normalizeStoreUrl(existingIntegration?.store_url || storeUrl);
+
+    if (!resolvedAssistantId || !resolvedProvider || !resolvedStoreUrl) {
+      return errorJson("assistantId, provider en storeUrl zijn verplicht voor admin shop setup.", 400);
+    }
+
+    if (resolvedProvider === "shopify" && !accessTokenValue) {
+      return errorJson("Voor Shopify is accessToken verplicht.", 400);
+    }
+    if (resolvedProvider === "prestashop" && !apiKey) {
+      return errorJson("Voor PrestaShop is apiKey verplicht.", 400);
+    }
+    if (resolvedProvider === "woocommerce" && (!apiKey || !apiSecret)) {
+      return errorJson("Voor WooCommerce zijn consumer key en consumer secret verplicht.", 400);
+    }
+
+    const { data: assistant, error: assistantError } = await dbClient
+      .from("assistants")
+      .select("*")
+      .eq("id", resolvedAssistantId)
+      .maybeSingle();
+    if (assistantError) throw assistantError;
+    if (!assistant) return errorJson("Geen assistant gevonden voor deze koppeling.", 404);
+
+    const previousMetadata =
+      existingIntegration?.metadata &&
+      typeof existingIntegration.metadata === "object" &&
+      !Array.isArray(existingIntegration.metadata)
+        ? existingIntegration.metadata
+        : {};
+
+    const metadata = {
+      ...previousMetadata,
+      setupMode: previousMetadata.setupMode || "concierge",
+      contactEmail: contactEmail || previousMetadata.contactEmail || null,
+      setupNotes: setupNotes || previousMetadata.setupNotes || null,
+      adminNotes: adminNotes || previousMetadata.adminNotes || null,
+      requestedAt: previousMetadata.requestedAt || existingIntegration?.created_at || nowIso(),
+      completedAt: nowIso(),
+      managedBy: "admin",
+    };
+
+    const { data: saved, error } = await dbClient
+      .from("commerce_integrations")
+      .upsert(
+        {
+          id: existingIntegration?.id || undefined,
+          assistant_id: assistant.id,
+          user_id: assistant.user_id,
+          provider: resolvedProvider,
+          status: "connected",
+          store_url: resolvedStoreUrl,
+          access_token: resolvedProvider === "shopify" ? accessTokenValue : null,
+          api_key: resolvedProvider !== "shopify" ? apiKey || null : null,
+          api_secret: resolvedProvider === "woocommerce" ? apiSecret : null,
+          webhook_secret: webhookSecret || existingIntegration?.webhook_secret || null,
+          metadata,
+          last_sync_at: nowIso(),
+          updated_at: nowIso(),
+        },
+        { onConflict: "assistant_id,provider" },
+      )
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    return json({
+      success: true,
+      integration: sanitizeIntegration(saved),
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -2220,6 +2371,10 @@ Deno.serve(async (req) => {
 
     if (method === "POST" && path === "/admin/approve-payment") {
       return await handleAdminApprove(req);
+    }
+
+    if (method === "POST" && path === "/admin/integrations/complete") {
+      return await handleAdminIntegrationComplete(req);
     }
 
     if (method === "POST" && path === "/admin/provision-run") {
