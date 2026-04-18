@@ -46,6 +46,7 @@ In Supabase -> Edge Functions -> Secrets:
 - `TWILIO_ACCOUNT_SID` (optioneel)
 - `TWILIO_AUTH_TOKEN` (optioneel)
 - `ADMIN_APPROVAL_KEY` (aanbevolen)
+- `ADMIN_USER_IDS` (optioneel; komma-gescheiden lijst van admin UIDs)
 - `ALLOW_SIMULATED_PROVISIONING=true`
 
 ## 4) Deploy (Supabase-only)
@@ -83,7 +84,7 @@ of via dashboard/CI.
 
 - Wizard onboarding (bedrijf, voice, nummer, plan)
 - Web call test in browser met states: Listening / Thinking / Speaking / Idle
-- Webshop integraties (Shopify + PrestaShop) met orderstatus lookup endpoint
+- Webshop integraties (Shopify + PrestaShop + WooCommerce) met orderstatus lookup endpoint
 - Factuuraanvraagflow (`invoice_sent`)
 - Admin approval endpoint (`paid_approved`)
 - Auto provisioning endpoint naar `live` (Twilio of simulatie)

@@ -3,6 +3,12 @@ import { hasSupabaseConfig, supabase, supabaseConfigMessage } from '../lib/supab
 import { hasApiBaseConfig, apiConfigMessage } from '../lib/api';
 
 const AppContext = createContext();
+const DEFAULT_ADMIN_UIDS = ['77b79572-27b4-4f2d-ad4d-0cc8a27ea8d3'];
+const CONFIGURED_ADMIN_UIDS = (import.meta.env.VITE_ADMIN_UIDS || '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+const ADMIN_UIDS = Array.from(new Set([...DEFAULT_ADMIN_UIDS, ...CONFIGURED_ADMIN_UIDS]));
 
 export const AppProvider = ({ children }) => {
   const [assistantConfig, setAssistantConfig] = useState(null);
@@ -11,7 +17,8 @@ export const AppProvider = ({ children }) => {
     return localStorage.getItem('theme') || 'light-mode';
   });
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(() => hasSupabaseConfig);
+  const isAdmin = Boolean(user?.id && ADMIN_UIDS.includes(user.id));
   
   const [knowledgeBase, setKnowledgeBase] = useState({
     urls: [],
@@ -58,11 +65,7 @@ export const AppProvider = ({ children }) => {
 
   // Listen to auth state changes
   useEffect(() => {
-    if (!hasSupabaseConfig) {
-      setUser(null);
-      setAuthLoading(false);
-      return undefined;
-    }
+    if (!hasSupabaseConfig) return undefined;
 
     let mounted = true;
 
@@ -125,6 +128,7 @@ export const AppProvider = ({ children }) => {
       theme, toggleTheme,
       knowledgeBase, setKnowledgeBase,
       user, authLoading, signOut,
+      isAdmin,
       supabaseConfigured: hasSupabaseConfig,
       supabaseConfigMessage,
       apiConfigured: hasApiBaseConfig,

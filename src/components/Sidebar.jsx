@@ -9,6 +9,7 @@ import {
   Mic,
   Moon,
   Phone,
+  ShieldCheck,
   Settings,
   Sun
 } from 'lucide-react';
@@ -16,7 +17,7 @@ import { useAppContext } from '../context/AppContext';
 import './Sidebar.css';
 
 const Sidebar = () => {
-  const { theme, toggleTheme, signOut, user } = useAppContext();
+  const { theme, toggleTheme, signOut, user, isAdmin } = useAppContext();
 
   return (
     <aside className="sidebar glass-panel">
@@ -64,6 +65,16 @@ const Sidebar = () => {
             <span>Account Settings</span>
           </NavLink>
         </div>
+
+        {isAdmin && (
+          <div className="nav-section">
+            <p className="nav-label">Admin</p>
+            <NavLink to="/dashboard/admin" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
+              <ShieldCheck size={20} />
+              <span>Admin Console</span>
+            </NavLink>
+          </div>
+        )}
       </div>
 
       <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -79,6 +90,7 @@ const Sidebar = () => {
             }}
           >
             {user.email}
+            {isAdmin ? ' · admin' : ''}
           </div>
         )}
         <button className="nav-item" onClick={toggleTheme} style={{ justifyContent: 'flex-start' }}>

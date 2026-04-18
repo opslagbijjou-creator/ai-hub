@@ -21,6 +21,7 @@ import { useAppContext } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
 import CallStudio from './CallStudio';
+import AdminConsole from './AdminConsole';
 import './Dashboard.css';
 
 const StatusPill = ({ label, value }) => (
@@ -124,7 +125,7 @@ const KnowledgeBase = () => {
 
 const Overview = () => {
   const navigate = useNavigate();
-  const { assistantConfig, setAssistantConfig, apiConfigured, apiConfigMessage } = useAppContext();
+  const { assistantConfig, setAssistantConfig, apiConfigured, apiConfigMessage, isAdmin } = useAppContext();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -146,7 +147,8 @@ const Overview = () => {
     provider: 'shopify',
     storeUrl: '',
     accessToken: '',
-    apiKey: ''
+    apiKey: '',
+    apiSecret: ''
   });
   const [integrationSaving, setIntegrationSaving] = useState(false);
   const [integrationNotice, setIntegrationNotice] = useState('');
@@ -316,6 +318,11 @@ const Overview = () => {
         payload.apiKey = integrationDraft.apiKey;
       }
 
+      if (integrationDraft.provider === 'woocommerce') {
+        payload.apiKey = integrationDraft.apiKey;
+        payload.apiSecret = integrationDraft.apiSecret;
+      }
+
       const response = await authFetch('/api/integrations/connect', {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -330,7 +337,8 @@ const Overview = () => {
       setIntegrationDraft((prev) => ({
         ...prev,
         accessToken: '',
-        apiKey: ''
+        apiKey: '',
+        apiSecret: ''
       }));
       await loadData();
     } catch (connectError) {
@@ -438,7 +446,10 @@ const Overview = () => {
         <h1 className="font-heading">
           Welcome back{assistantConfig?.companyName ? `, ${assistantConfig.companyName}` : ''}
         </h1>
-        <p className="text-muted">Call-only dashboard. WhatsApp is volledig uit scope gehaald.</p>
+        <p className="text-muted">
+          Call-only dashboard voor je AI assistent.
+          {isAdmin ? ' Je adminconsole staat ook voor je klaar in het menu.' : ''}
+        </p>
       </div>
 
       {!apiConfigured && (
@@ -531,7 +542,7 @@ const Overview = () => {
             <ShoppingCart size={18} /> Webshop koppelingen
           </h3>
           <p className="text-muted">
-            Koppel je shop zodat de assistent orderstatus kan ophalen tijdens gesprekken.
+            Koppel Shopify, PrestaShop of WooCommerce zodat de assistent orderstatus kan ophalen tijdens gesprekken.
           </p>
         </div>
 
@@ -551,11 +562,15 @@ const Overview = () => {
                 onChange={(event) =>
                   setIntegrationDraft((prev) => ({
                     ...prev,
-                    provider: event.target.value
+                    provider: event.target.value,
+                    accessToken: '',
+                    apiKey: '',
+                    apiSecret: ''
                   }))}
               >
                 <option value="shopify">Shopify</option>
                 <option value="prestashop">PrestaShop</option>
+                <option value="woocommerce">WooCommerce</option>
               </select>
             </label>
 
@@ -564,7 +579,7 @@ const Overview = () => {
               <input
                 type="text"
                 className="glass-input"
-                placeholder="https://jouwshop.myshopify.com"
+                placeholder="https://jouwshop.nl"
                 value={integrationDraft.storeUrl}
                 onChange={(event) =>
                   setIntegrationDraft((prev) => ({
@@ -606,6 +621,40 @@ const Overview = () => {
                     }))}
                 />
               </label>
+            )}
+
+            {integrationDraft.provider === 'woocommerce' && (
+              <>
+                <label>
+                  WooCommerce Consumer Key
+                  <input
+                    type="password"
+                    className="glass-input"
+                    placeholder="ck_..."
+                    value={integrationDraft.apiKey}
+                    onChange={(event) =>
+                      setIntegrationDraft((prev) => ({
+                        ...prev,
+                        apiKey: event.target.value
+                      }))}
+                  />
+                </label>
+
+                <label>
+                  WooCommerce Consumer Secret
+                  <input
+                    type="password"
+                    className="glass-input"
+                    placeholder="cs_..."
+                    value={integrationDraft.apiSecret}
+                    onChange={(event) =>
+                      setIntegrationDraft((prev) => ({
+                        ...prev,
+                        apiSecret: event.target.value
+                      }))}
+                  />
+                </label>
+              </>
             )}
 
             <button
@@ -657,6 +706,7 @@ const Overview = () => {
                   <option value="">Auto (eerste actieve)</option>
                   <option value="shopify">Shopify</option>
                   <option value="prestashop">PrestaShop</option>
+                  <option value="woocommerce">WooCommerce</option>
                 </select>
 
                 <input
@@ -842,6 +892,7 @@ const Dashboard = () => {
       <main className="dashboard-content">
         <Routes>
           <Route path="/" element={<Overview />} />
+          <Route path="/admin" element={<AdminConsole />} />
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/knowledge-base" element={<KnowledgeBase />} />
           <Route path="/call-studio" element={<CallStudio />} />

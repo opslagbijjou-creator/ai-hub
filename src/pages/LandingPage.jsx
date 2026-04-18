@@ -35,7 +35,7 @@ const featureCards = [
     icon: ShoppingBag,
     title: 'Klaar voor e-commerce en servicevragen',
     copy:
-      'Shopify en PrestaShop kunnen worden gekoppeld zodat de assistent ook orderstatus en veelvoorkomende supportvragen kan oppakken.'
+      'Shopify, PrestaShop en WooCommerce kunnen worden gekoppeld zodat de assistent ook orderstatus en veelvoorkomende supportvragen kan oppakken.'
   }
 ];
 

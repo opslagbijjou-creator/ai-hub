@@ -5,6 +5,41 @@ import { useAppContext } from '../context/AppContext';
 import { Bot, Mail, Lock, ChevronRight, ArrowLeft, User, Sparkles } from 'lucide-react';
 import './LandingPage.css';
 
+const normalizeAuthError = (message) => {
+  const raw = String(message || '').trim();
+  if (!raw) return 'Inloggen is mislukt. Probeer het opnieuw.';
+
+  if (/email not confirmed/i.test(raw)) {
+    return 'Je e-mailadres is nog niet bevestigd. Open je inbox en bevestig je account eerst.';
+  }
+
+  if (/invalid login credentials/i.test(raw)) {
+    return 'Onjuiste inloggegevens. Controleer je e-mail en wachtwoord.';
+  }
+
+  if (/email address .* is invalid/i.test(raw)) {
+    return 'Gebruik een geldig e-mailadres (bijvoorbeeld geen example.com).';
+  }
+
+  return raw;
+};
+
+const getInitialAuthError = () => {
+  if (typeof window === 'undefined') return '';
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const searchParams = new URLSearchParams(window.location.search);
+  const rawOauthError =
+    hashParams.get('error_description') ||
+    hashParams.get('error') ||
+    searchParams.get('error_description') ||
+    searchParams.get('error');
+
+  if (!rawOauthError) return '';
+  const decoded = decodeURIComponent(String(rawOauthError).replace(/\+/g, ' '));
+  return normalizeAuthError(decoded);
+};
+
 const AuthPage = () => {
   const { supabaseConfigured, supabaseConfigMessage, apiConfigured, apiConfigMessage, user, authLoading } = useAppContext();
   const navigate = useNavigate();
@@ -13,7 +48,7 @@ const AuthPage = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => getInitialAuthError());
   const [notice, setNotice] = useState('');
   const [resendLoading, setResendLoading] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -23,40 +58,6 @@ const AuthPage = () => {
       navigate('/dashboard', { replace: true });
     }
   }, [authLoading, navigate, user]);
-
-  useEffect(() => {
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const searchParams = new URLSearchParams(window.location.search);
-    const rawOauthError =
-      hashParams.get('error_description') ||
-      hashParams.get('error') ||
-      searchParams.get('error_description') ||
-      searchParams.get('error');
-
-    if (!rawOauthError) return;
-
-    const decoded = decodeURIComponent(String(rawOauthError).replace(/\+/g, ' '));
-    setError(normalizeAuthError(decoded));
-  }, []);
-
-  const normalizeAuthError = (message) => {
-    const raw = String(message || '').trim();
-    if (!raw) return 'Inloggen is mislukt. Probeer het opnieuw.';
-
-    if (/email not confirmed/i.test(raw)) {
-      return 'Je e-mailadres is nog niet bevestigd. Open je inbox en bevestig je account eerst.';
-    }
-
-    if (/invalid login credentials/i.test(raw)) {
-      return 'Onjuiste inloggegevens. Controleer je e-mail en wachtwoord.';
-    }
-
-    if (/email address .* is invalid/i.test(raw)) {
-      return 'Gebruik een geldig e-mailadres (bijvoorbeeld geen example.com).';
-    }
-
-    return raw;
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();

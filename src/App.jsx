@@ -1,34 +1,38 @@
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
-import AuthPage from './pages/AuthPage';
-import Dashboard from './pages/Dashboard';
-import Wizard from './pages/Wizard';
-import PricingPage from './pages/PricingPage';
-import InfoPage from './pages/InfoPage';
-import PrivacyPage from './pages/PrivacyPage';
-import CompliancePage from './pages/CompliancePage';
-import TermsPage from './pages/TermsPage';
 import { AppProvider, useAppContext } from './context/AppContext';
 import './App.css';
+
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Wizard = lazy(() => import('./pages/Wizard'));
+const PricingPage = lazy(() => import('./pages/PricingPage'));
+const InfoPage = lazy(() => import('./pages/InfoPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const CompliancePage = lazy(() => import('./pages/CompliancePage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+
+const FullscreenLoader = () => (
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      background: 'var(--bg-dark)',
+      color: 'var(--text-main)'
+    }}
+  >
+    <p>Laden...</p>
+  </div>
+);
 
 const ProtectedRoute = ({ children }) => {
   const { user, authLoading } = useAppContext();
 
   if (authLoading) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: 'var(--bg-dark)',
-          color: 'var(--text-main)'
-        }}
-      >
-        <p>Laden...</p>
-      </div>
-    );
+    return <FullscreenLoader />;
   }
 
   if (!user) {
@@ -42,49 +46,38 @@ function AppRoutes() {
   const { user, authLoading } = useAppContext();
 
   if (authLoading) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: 'var(--bg-dark)',
-          color: 'var(--text-main)'
-        }}
-      >
-        <p>Laden...</p>
-      </div>
-    );
+    return <FullscreenLoader />;
   }
 
   return (
     <div className="app-container">
-      <Routes>
-        <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
-        <Route path="/pricing" element={<PricingPage />} />
-        <Route path="/info" element={<InfoPage />} />
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/compliance" element={<CompliancePage />} />
-        <Route path="/terms" element={<TermsPage />} />
-        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
-        <Route
-          path="/dashboard/*"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/setup-wizard"
-          element={
-            <ProtectedRoute>
-              <Wizard />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <Suspense fallback={<FullscreenLoader />}>
+        <Routes>
+          <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/info" element={<InfoPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/compliance" element={<CompliancePage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
+          <Route
+            path="/dashboard/*"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/setup-wizard"
+            element={
+              <ProtectedRoute>
+                <Wizard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Suspense>
     </div>
   );
 }

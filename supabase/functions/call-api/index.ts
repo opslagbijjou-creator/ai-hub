@@ -18,6 +18,17 @@ const ELEVENLABS_MODEL_ID = String(Deno.env.get("ELEVENLABS_MODEL_ID") || "eleve
 const TWILIO_ACCOUNT_SID = String(Deno.env.get("TWILIO_ACCOUNT_SID") || "").trim();
 const TWILIO_AUTH_TOKEN = String(Deno.env.get("TWILIO_AUTH_TOKEN") || "").trim();
 const ADMIN_APPROVAL_KEY = String(Deno.env.get("ADMIN_APPROVAL_KEY") || "").trim();
+const ADMIN_USER_IDS = Array.from(
+  new Set(
+    [
+      "77b79572-27b4-4f2d-ad4d-0cc8a27ea8d3",
+      ...String(Deno.env.get("ADMIN_USER_IDS") || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ],
+  ),
+);
 const ALLOW_SIMULATED_PROVISIONING =
   String(Deno.env.get("ALLOW_SIMULATED_PROVISIONING") || "true").toLowerCase() !== "false";
 
@@ -194,6 +205,12 @@ function assertSupabaseReady() {
   }
 }
 
+function assertServiceRoleAvailable() {
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is nodig voor adminacties.");
+  }
+}
+
 function createDbClient(apiKey: string, accessToken: string | null = null) {
   return createClient(SUPABASE_URL, apiKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -284,6 +301,24 @@ async function requireUser(req: Request) {
 function isAdminRequest(req: Request) {
   const providedKey = String(req.headers.get("x-admin-key") || "").trim();
   return Boolean(ADMIN_APPROVAL_KEY && providedKey && providedKey === ADMIN_APPROVAL_KEY);
+}
+
+function isAdminUserId(userId: unknown) {
+  const id = safeText(userId);
+  return Boolean(id && ADMIN_USER_IDS.includes(id));
+}
+
+async function requireAdminAccess(req: Request) {
+  const auth = await requireUser(req);
+  if (!auth.error && auth.user && isAdminUserId(auth.user.id)) {
+    return { error: null, user: auth.user, token: auth.token, mode: "user" as const };
+  }
+
+  if (isAdminRequest(req)) {
+    return { error: null, user: auth.user || null, token: auth.token || "", mode: "key" as const };
+  }
+
+  return { error: errorJson("Geen admintoegang.", 403), user: null, token: "", mode: "none" as const };
 }
 
 function onboardingFromPayload(payload: Record<string, unknown> = {}) {
@@ -565,6 +600,7 @@ function sanitizeIntegration(integration: Record<string, any>) {
     storeUrl: integration.store_url,
     hasAccessToken: Boolean(integration.access_token),
     hasApiKey: Boolean(integration.api_key),
+    hasApiSecret: Boolean(integration.api_secret),
     lastSyncAt: integration.last_sync_at || null,
     updatedAt: integration.updated_at || null,
   };
@@ -744,6 +780,71 @@ async function lookupPrestashopOrderStatus(integration: Record<string, any>, par
   });
 }
 
+async function lookupWooCommerceOrderStatus(integration: Record<string, any>, params: Record<string, any>) {
+  const storeUrl = normalizeStoreUrl(integration.store_url || integration.storeUrl);
+  const consumerKey = safeText(integration.api_key || integration.apiKey);
+  const consumerSecret = safeText(integration.api_secret || integration.apiSecret);
+  const orderReference = normalizeOrderReference(params.orderReference || params.orderNumber || params.reference);
+  const email = safeText(params.email).toLowerCase();
+
+  if (!storeUrl || !consumerKey || !consumerSecret || !orderReference) {
+    return { found: false, error: "WooCommerce configuratie of orderreferentie ontbreekt." };
+  }
+
+  const authQuery = `consumer_key=${encodeURIComponent(consumerKey)}&consumer_secret=${encodeURIComponent(consumerSecret)}`;
+
+  const mapOrder = (order: Record<string, any>) =>
+    formatLookupResult({
+      provider: "woocommerce",
+      orderReference: String(order.number || order.id || orderReference),
+      status: order.status || "Onbekend",
+      paymentStatus: order.payment_method_title || null,
+      customerEmail: order?.billing?.email || email || null,
+      totalAmount: order.total || null,
+      currency: order.currency || null,
+      source: storeUrl,
+      raw: order,
+    });
+
+  if (/^\d+$/.test(orderReference)) {
+    const directResponse = await fetch(`${storeUrl}/wp-json/wc/v3/orders/${orderReference}?${authQuery}`);
+    if (directResponse.ok) {
+      const directOrder = await directResponse.json();
+      if (!email || safeText(directOrder?.billing?.email).toLowerCase() === email) {
+        return mapOrder(directOrder);
+      }
+    }
+  }
+
+  const searchResponse = await fetch(
+    `${storeUrl}/wp-json/wc/v3/orders?search=${encodeURIComponent(orderReference)}&per_page=15&${authQuery}`,
+  );
+
+  if (!searchResponse.ok) {
+    const reason = await searchResponse.text();
+    return { found: false, error: `WooCommerce request mislukt: ${reason.slice(0, 180)}` };
+  }
+
+  const orders = await searchResponse.json();
+  if (!Array.isArray(orders) || !orders.length) {
+    return { found: false, notFound: true, provider: "woocommerce", orderReference };
+  }
+
+  const match = orders.find((order: Record<string, any>) => {
+    const matchesReference =
+      String(order?.number || "").replace(/^#/, "") === orderReference ||
+      String(order?.id || "") === orderReference;
+    const matchesEmail = !email || safeText(order?.billing?.email).toLowerCase() === email;
+    return matchesReference && matchesEmail;
+  }) || orders.find((order: Record<string, any>) => !email || safeText(order?.billing?.email).toLowerCase() === email);
+
+  if (!match) {
+    return { found: false, notFound: true, provider: "woocommerce", orderReference };
+  }
+
+  return mapOrder(match);
+}
+
 async function lookupOrderStatus(
   dbClient: any,
   assistantId: string,
@@ -782,6 +883,10 @@ async function lookupOrderStatus(
         lastError = result.error || lastError;
       } else if (currentProvider === "prestashop") {
         const result = await lookupPrestashopOrderStatus(integration, { orderReference, email });
+        if (result.found || result.notFound) return result;
+        lastError = result.error || lastError;
+      } else if (currentProvider === "woocommerce") {
+        const result = await lookupWooCommerceOrderStatus(integration, { orderReference, email });
         if (result.found || result.notFound) return result;
         lastError = result.error || lastError;
       } else {
@@ -968,6 +1073,320 @@ function dbErrorToResponse(error: any) {
     return errorJson(migrationError(), 500);
   }
   return errorJson(error?.message || "Database fout.", 500);
+}
+
+function pickLatestBy<T extends Record<string, any>>(rows: T[], keyField: string, dateField = "updated_at") {
+  const map = new Map<string, T>();
+
+  for (const row of rows || []) {
+    const key = safeText(row?.[keyField]);
+    if (!key) continue;
+
+    const previous = map.get(key);
+    const rowDate = new Date(String(row?.[dateField] || row?.created_at || 0)).getTime();
+    const previousDate = previous ? new Date(String(previous?.[dateField] || previous?.created_at || 0)).getTime() : 0;
+
+    if (!previous || rowDate >= previousDate) {
+      map.set(key, row);
+    }
+  }
+
+  return map;
+}
+
+async function handleAdminOverview(req: Request) {
+  const admin = await requireAdminAccess(req);
+  if (admin.error) return admin.error;
+
+  try {
+    assertServiceRoleAvailable();
+    const dbClient = getDbClient(null);
+
+    const { data: assistants, error: assistantsError } = await dbClient
+      .from("assistants")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (assistantsError) throw assistantsError;
+
+    const assistantRows = assistants || [];
+    if (!assistantRows.length) {
+      return json({
+        success: true,
+        summary: {
+          totalAssistants: 0,
+          liveAssistants: 0,
+          awaitingPayment: 0,
+          needsProvisioning: 0,
+          connectedShops: 0,
+          providerBreakdown: {},
+        },
+        assistants: [],
+      });
+    }
+
+    const assistantIds = assistantRows.map((entry: Record<string, any>) => entry.id);
+    const userIds = Array.from(new Set(assistantRows.map((entry: Record<string, any>) => entry.user_id).filter(Boolean)));
+
+    const periodStart = new Date();
+    periodStart.setUTCDate(1);
+    periodStart.setUTCHours(0, 0, 0, 0);
+
+    const [
+      profilesResult,
+      numbersResult,
+      voicesResult,
+      invoicesResult,
+      provisioningResult,
+      subscriptionsResult,
+      integrationsResult,
+      billingAccountsResult,
+      usageResult,
+    ] = await Promise.all([
+      dbClient.from("assistant_profiles").select("*").in("assistant_id", assistantIds),
+      dbClient.from("assistant_numbers").select("*").in("assistant_id", assistantIds).eq("selected", true),
+      dbClient.from("assistant_voices").select("*").in("assistant_id", assistantIds).eq("selected", true),
+      dbClient.from("invoices").select("*").in("assistant_id", assistantIds).order("created_at", { ascending: false }),
+      dbClient.from("provisioning_jobs").select("*").in("assistant_id", assistantIds).order("created_at", { ascending: false }),
+      dbClient.from("subscription_state").select("*").in("assistant_id", assistantIds),
+      dbClient.from("commerce_integrations").select("*").in("assistant_id", assistantIds).order("updated_at", { ascending: false }),
+      dbClient.from("billing_accounts").select("*").in("user_id", userIds),
+      dbClient
+        .from("usage_ledger")
+        .select("assistant_id,usage_type,quantity,occurred_at")
+        .in("assistant_id", assistantIds)
+        .gte("occurred_at", periodStart.toISOString()),
+    ]);
+
+    const relationError = [
+      profilesResult.error,
+      numbersResult.error,
+      voicesResult.error,
+      invoicesResult.error,
+      provisioningResult.error,
+      subscriptionsResult.error,
+      integrationsResult.error,
+      billingAccountsResult.error,
+      usageResult.error,
+    ].find(Boolean);
+    if (relationError) throw relationError;
+
+    const profileMap = new Map(
+      (profilesResult.data || []).map((entry: Record<string, any>) => [entry.assistant_id, entry]),
+    );
+    const selectedNumberMap = pickLatestBy(numbersResult.data || [], "assistant_id", "updated_at");
+    const selectedVoiceMap = pickLatestBy(voicesResult.data || [], "assistant_id", "updated_at");
+    const latestInvoiceMap = pickLatestBy(invoicesResult.data || [], "assistant_id", "created_at");
+    const latestProvisioningMap = pickLatestBy(provisioningResult.data || [], "assistant_id", "created_at");
+    const subscriptionMap = new Map(
+      (subscriptionsResult.data || []).map((entry: Record<string, any>) => [entry.assistant_id, entry]),
+    );
+    const billingAccountMap = new Map(
+      (billingAccountsResult.data || []).map((entry: Record<string, any>) => [entry.user_id, entry]),
+    );
+
+    const integrationsByAssistant = new Map<string, Record<string, any>[]>();
+    for (const integration of integrationsResult.data || []) {
+      const key = safeText(integration.assistant_id);
+      if (!key) continue;
+      if (!integrationsByAssistant.has(key)) integrationsByAssistant.set(key, []);
+      integrationsByAssistant.get(key)!.push(integration);
+    }
+
+    const usageByAssistant = new Map<string, { minutesUsed: number; tasksUsed: number }>();
+    for (const row of usageResult.data || []) {
+      const key = safeText(row.assistant_id);
+      if (!key) continue;
+      const current = usageByAssistant.get(key) || { minutesUsed: 0, tasksUsed: 0 };
+      const quantity = Number(row.quantity || 0);
+      const usageType = safeText(row.usage_type);
+
+      if (usageType === "call_minutes") current.minutesUsed += quantity;
+      if (usageType === "web_test_task" || usageType === "call_task") current.tasksUsed += quantity;
+
+      usageByAssistant.set(key, current);
+    }
+
+    const providerBreakdown: Record<string, number> = {};
+    const items = assistantRows.map((assistant: Record<string, any>) => {
+      const profile = profileMap.get(assistant.id) || null;
+      const selectedNumber = selectedNumberMap.get(assistant.id) || null;
+      const selectedVoice = selectedVoiceMap.get(assistant.id) || null;
+      const latestInvoice = latestInvoiceMap.get(assistant.id) || null;
+      const latestProvisioningJob = latestProvisioningMap.get(assistant.id) || null;
+      const subscription = subscriptionMap.get(assistant.id) || null;
+      const billingAccount = billingAccountMap.get(assistant.user_id) || null;
+      const integrations = (integrationsByAssistant.get(assistant.id) || []).map((entry) => sanitizeIntegration(entry));
+      const connectedProviders = integrations
+        .filter((entry: Record<string, any>) => entry.status === "connected")
+        .map((entry: Record<string, any>) => entry.provider);
+      const usage = usageByAssistant.get(assistant.id) || { minutesUsed: 0, tasksUsed: 0 };
+
+      for (const provider of connectedProviders) {
+        providerBreakdown[provider] = (providerBreakdown[provider] || 0) + 1;
+      }
+
+      const plan = getPlanConfig(subscription?.plan_key || assistant.desired_plan);
+      const invoiceStatus = latestInvoice?.status || assistant.billing_status || "none";
+      const provisioningStatus = latestProvisioningJob?.status || null;
+      const needsAction =
+        invoiceStatus === "invoice_sent" ||
+        ["queued", "failed", "needs_number_reselect"].includes(String(provisioningStatus || "")) ||
+        assistant.billing_status === "paid_approved";
+
+      return {
+        assistantId: assistant.id,
+        userId: assistant.user_id,
+        companyName: profile?.company_name || assistant.display_name || "Onbekend bedrijf",
+        businessType: profile?.business_type || null,
+        contactEmail: billingAccount?.email || null,
+        payerName: billingAccount?.payer_name || null,
+        assistantStatus: assistant.status,
+        liveStatus: assistant.live_status,
+        billingStatus: assistant.billing_status,
+        plan: {
+          key: plan.key,
+          name: plan.name,
+          monthlyPriceEur: plan.monthlyPriceEur,
+        },
+        number: selectedNumber
+          ? {
+            e164: selectedNumber.e164,
+            label: selectedNumber.display_label || selectedNumber.e164,
+            status: selectedNumber.status,
+          }
+          : null,
+        voice: selectedVoice
+          ? {
+            key: selectedVoice.voice_key,
+            displayName: selectedVoice.display_name,
+          }
+          : null,
+        latestInvoice: latestInvoice
+          ? {
+            id: latestInvoice.id,
+            invoiceNumber: latestInvoice.invoice_number,
+            status: latestInvoice.status,
+            amountEur: Number(latestInvoice.amount_eur || 0),
+            planKey: latestInvoice.plan_key,
+            dueAt: latestInvoice.due_at,
+            paidAt: latestInvoice.paid_at,
+            createdAt: latestInvoice.created_at,
+          }
+          : null,
+        latestProvisioningJob: latestProvisioningJob
+          ? {
+            id: latestProvisioningJob.id,
+            status: latestProvisioningJob.status,
+            trigger: latestProvisioningJob.trigger,
+            errorMessage: latestProvisioningJob.error_message || null,
+            updatedAt: latestProvisioningJob.updated_at,
+            completedAt: latestProvisioningJob.completed_at,
+          }
+          : null,
+        connectedProviders,
+        integrations,
+        usage,
+        updatedAt: assistant.updated_at,
+        needsAction,
+      };
+    });
+
+    const summary = {
+      totalAssistants: items.length,
+      liveAssistants: items.filter((entry) => entry.liveStatus === "live").length,
+      awaitingPayment: items.filter((entry) => entry.latestInvoice?.status === "invoice_sent").length,
+      needsProvisioning: items.filter((entry) =>
+        entry.billingStatus === "paid_approved" ||
+        ["queued", "failed", "needs_number_reselect"].includes(String(entry.latestProvisioningJob?.status || ""))
+      ).length,
+      connectedShops: items.filter((entry) => entry.connectedProviders.length > 0).length,
+      providerBreakdown,
+    };
+
+    return json({
+      success: true,
+      admin: {
+        userId: admin.user?.id || null,
+        mode: admin.mode,
+      },
+      summary,
+      assistants: items,
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleAdminProvisionRun(req: Request) {
+  const admin = await requireAdminAccess(req);
+  if (admin.error) return admin.error;
+
+  try {
+    assertServiceRoleAvailable();
+    const dbClient = getDbClient(null);
+    const body = await parseBody(req) as Record<string, unknown>;
+    const assistantId = safeText(body?.assistantId);
+    const jobId = safeText(body?.jobId);
+
+    if (!assistantId && !jobId) {
+      return errorJson("assistantId of jobId is verplicht.", 400);
+    }
+
+    let targetJobId = jobId;
+
+    if (!targetJobId && assistantId) {
+      const { data: latestJob, error: latestJobError } = await dbClient
+        .from("provisioning_jobs")
+        .select("*")
+        .eq("assistant_id", assistantId)
+        .in("status", ["queued", "failed", "needs_number_reselect"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestJobError) throw latestJobError;
+
+      if (latestJob?.id) {
+        targetJobId = latestJob.id;
+      } else {
+        const { data: assistant, error: assistantError } = await dbClient
+          .from("assistants")
+          .select("*")
+          .eq("id", assistantId)
+          .maybeSingle();
+        if (assistantError) throw assistantError;
+        if (!assistant) return errorJson("Geen assistant gevonden.", 404);
+
+        const createdAt = nowIso();
+        const { data: createdJob, error: createJobError } = await dbClient
+          .from("provisioning_jobs")
+          .insert({
+            assistant_id: assistant.id,
+            user_id: assistant.user_id,
+            status: "queued",
+            trigger: "admin_manual_retry",
+            attempt_count: 0,
+            payload: { source: "admin_console" },
+            created_at: createdAt,
+            updated_at: createdAt,
+          })
+          .select("*")
+          .single();
+        if (createJobError) throw createJobError;
+        targetJobId = createdJob.id;
+      }
+    }
+
+    if (!targetJobId) return errorJson("Kon geen provisioning job bepalen.", 404);
+
+    const result = await runProvisioningJob({ dbClient, jobId: targetJobId });
+    return json({
+      success: true,
+      jobId: targetJobId,
+      result,
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
 }
 
 async function handleOnboardingSave(
@@ -1361,11 +1780,11 @@ async function handleInvoiceRequest(req: Request, user: any, accessToken: string
 }
 
 async function handleAdminApprove(req: Request) {
-  if (!isAdminRequest(req)) {
-    return errorJson("Admin key ontbreekt of is ongeldig.", 401);
-  }
+  const admin = await requireAdminAccess(req);
+  if (admin.error) return admin.error;
 
   try {
+    assertServiceRoleAvailable();
     const dbClient = getDbClient(null);
     const body = await parseBody(req) as Record<string, unknown>;
     const invoiceId = safeText(body?.invoiceId);
@@ -1568,6 +1987,9 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
     }
     if (provider === "prestashop" && !apiKey) {
       return errorJson("Voor PrestaShop is apiKey verplicht.", 400);
+    }
+    if (provider === "woocommerce" && (!apiKey || !apiSecret)) {
+      return errorJson("Voor WooCommerce zijn consumer key en consumer secret verplicht.", 400);
     }
 
     const { data: saved, error } = await dbClient
@@ -1792,8 +2214,16 @@ Deno.serve(async (req) => {
       return await handleIntegrationOrderStatus(req, auth.user, auth.token);
     }
 
+    if (method === "GET" && path === "/admin/overview") {
+      return await handleAdminOverview(req);
+    }
+
     if (method === "POST" && path === "/admin/approve-payment") {
       return await handleAdminApprove(req);
+    }
+
+    if (method === "POST" && path === "/admin/provision-run") {
+      return await handleAdminProvisionRun(req);
     }
 
     if (method === "POST" && path === "/provision/run") {

@@ -271,17 +271,17 @@ const Wizard = () => {
       <div className="wizard-sidebar glass-panel">
         <div className="wizard-logo">
           <Phone className="text-gradient" size={28} />
-          <h2>AI Receptionist</h2>
+          <h2>AI Hub Voice</h2>
         </div>
 
         <ul className="wizard-steps">
           <li className={step >= 1 ? 'active' : ''}>
             <div className="step-circle">{step > 1 ? <CheckCircle size={16} /> : '1'}</div>
-            <span>Business Intake</span>
+            <span>Bedrijfsinfo</span>
           </li>
           <li className={step >= 2 ? 'active' : ''}>
             <div className="step-circle">{step > 2 ? <CheckCircle size={16} /> : '2'}</div>
-            <span>Voice</span>
+            <span>Stem</span>
           </li>
           <li className={step >= 3 ? 'active' : ''}>
             <div className="step-circle">{step > 3 ? <CheckCircle size={16} /> : '3'}</div>
@@ -289,7 +289,7 @@ const Wizard = () => {
           </li>
           <li className={step >= 4 ? 'active' : ''}>
             <div className="step-circle">4</div>
-            <span>Web Test + Factuur</span>
+            <span>Test + Activatie</span>
           </li>
         </ul>
       </div>
@@ -303,8 +303,8 @@ const Wizard = () => {
 
         {step === 1 && (
           <div className="step-content animate-fade-in">
-            <h1>Train je AI assistent</h1>
-            <p className="text-muted">Vertel kort hoe je bedrijf werkt. Deze data wordt direct je AI prompt.</p>
+            <h1>Geef je assistent de juiste bedrijfscontext</h1>
+            <p className="text-muted">Hoe duidelijker je basis, hoe natuurlijker de assistent straks antwoordt in web test en live telefonie.</p>
 
             <div className="form-group">
               <label>Bedrijfsnaam</label>
@@ -368,8 +368,8 @@ const Wizard = () => {
 
         {step === 2 && (
           <div className="step-content animate-fade-in">
-            <h1>Kies je stem</h1>
-            <p className="text-muted">Deze stem wordt gebruikt in web test en live telefoonmodus.</p>
+            <h1>Kies de stem die bij je bedrijf past</h1>
+            <p className="text-muted">Deze stem gebruik je in de browser-test en later ook in de live telefoonflow.</p>
 
             {loadingOptions ? (
               <div className="glass-panel" style={{ padding: '1rem', marginTop: '1.5rem' }}>
@@ -428,7 +428,7 @@ const Wizard = () => {
         {step === 3 && (
           <div className="step-content animate-fade-in">
             <h1>Kies nummer en pakket</h1>
-            <p className="text-muted">Nummer wordt pas live gekoppeld na payment approval + provisioning.</p>
+            <p className="text-muted">Je kiest nu alvast je nummer en pakket. Betalen en live activeren gebeurt pas wanneer jij daar klaar voor bent.</p>
 
             {loadingOptions ? (
               <div className="glass-panel" style={{ padding: '1rem', marginTop: '1.5rem' }}>
@@ -489,8 +489,7 @@ const Wizard = () => {
           <div className="step-content animate-fade-in" style={{ maxWidth: '980px' }}>
             <h1>Test je assistent live op de website</h1>
             <p className="text-muted">
-              Je kunt nu echt praten met je AI via microfoon. De telefoonlijn blijft <strong>not live</strong> totdat betaling is
-              goedgekeurd en provisioning is uitgevoerd.
+              Je kunt nu echt praten met je AI via microfoon. De telefoonlijn blijft <strong>not live</strong> totdat betaling is goedgekeurd en provisioning is uitgevoerd.
             </p>
 
             <div className="glass-panel" style={{ marginTop: '1rem', padding: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>

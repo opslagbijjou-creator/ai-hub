@@ -60,7 +60,7 @@ const cards = [
     icon: ShoppingBag,
     title: 'Integraties',
     items: [
-      'Shopify en PrestaShop kunnen orderstatus en servicevragen ondersteunen.',
+      'Shopify, PrestaShop en WooCommerce kunnen orderstatus en servicevragen ondersteunen.',
       'Integraties zijn per bedrijf gekoppeld aan de eigen assistent.',
       'Je bepaalt zelf welke bedrijfscontext en systemen actief zijn.',
       'Complexere koppelingen kunnen later per branche worden uitgebreid.'
