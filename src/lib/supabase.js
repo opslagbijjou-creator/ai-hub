@@ -6,8 +6,12 @@ import { createClient } from '@supabase/supabase-js';
 // 3. Ga naar Settings > API
 // 4. Kopieer de "Project URL" en "anon public" key
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const defaultSupabaseUrl = 'https://xsmpmorgtcbzjbnmjzvn.supabase.co';
+const defaultSupabaseAnonKey =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzbXBtb3JndGNiempibm1qenZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0NTkwNDQsImV4cCI6MjA5MjAzNTA0NH0.CXXvDFTqNSZ1tRDrq698PLuq5UAWByT6wcEJ5AWplUs';
+
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || defaultSupabaseUrl || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || defaultSupabaseAnonKey || '').trim();
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 export const supabaseConfigMessage =
