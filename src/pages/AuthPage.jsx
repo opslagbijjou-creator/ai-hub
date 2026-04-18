@@ -6,7 +6,7 @@ import { Bot, Mail, Lock, ChevronRight, ArrowLeft, User, Sparkles } from 'lucide
 import './LandingPage.css';
 
 const AuthPage = () => {
-  const { supabaseConfigured, supabaseConfigMessage, user, authLoading } = useAppContext();
+  const { supabaseConfigured, supabaseConfigMessage, apiConfigured, apiConfigMessage, user, authLoading } = useAppContext();
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -257,6 +257,12 @@ const AuthPage = () => {
           {!supabaseConfigured && (
             <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px', color: '#FDE68A', fontSize: '0.85rem' }}>
               {supabaseConfigMessage}
+            </div>
+          )}
+
+          {!apiConfigured && (
+            <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.28)', borderRadius: '8px', color: '#B45309', fontSize: '0.85rem' }}>
+              {apiConfigMessage}
             </div>
           )}
 

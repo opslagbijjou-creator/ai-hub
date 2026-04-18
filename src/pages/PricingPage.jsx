@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Calculator } from 'lucide-react';
+import { CheckCircle2, Calculator } from 'lucide-react';
 import { PRICING_PLANS, getPlanByKey } from '../lib/pricing';
+import PublicFooter from '../components/PublicFooter';
+import PublicHeader from '../components/PublicHeader';
 import './LandingPage.css';
 
 const PricingPage = () => {
-  const navigate = useNavigate();
   const [selectedPlanKey, setSelectedPlanKey] = useState(PRICING_PLANS[1].key);
   const [minutes, setMinutes] = useState(PRICING_PLANS[1].includedMinutes);
   const [tasks, setTasks] = useState(PRICING_PLANS[1].includedTasks);
@@ -32,26 +32,7 @@ const PricingPage = () => {
   return (
     <div className="landing-container marketing-page">
       <div className="marketing-grid"></div>
-
-      <nav className="landing-nav glass-panel">
-        <button className="nav-logo" onClick={() => navigate('/')}>
-          <span className="font-heading">AI Hub Voice</span>
-        </button>
-
-        <div className="nav-links">
-          <button onClick={() => navigate('/info')}>Info</button>
-          <button className="active-link" onClick={() => navigate('/pricing')}>
-            Pricing
-          </button>
-          <button onClick={() => navigate('/login')}>Dashboard</button>
-        </div>
-
-        <div className="nav-actions">
-          <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
-            Start setup <ArrowRight size={16} />
-          </button>
-        </div>
-      </nav>
+      <PublicHeader active="pricing" />
 
       <section className="pricing-hero">
         <h1>Eerlijke en duidelijke pakketten</h1>
@@ -174,12 +155,7 @@ const PricingPage = () => {
         </ul>
       </section>
 
-      <footer className="marketing-footer">
-        <p>Wil je direct live testen? Start de wizard en voer een web call test uit.</p>
-        <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
-          Ga naar wizard <ArrowRight size={16} />
-        </button>
-      </footer>
+      <PublicFooter />
     </div>
   );
 };

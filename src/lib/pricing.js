@@ -42,7 +42,7 @@ export const PRICING_PLANS = [
   {
     key: 'plan_850',
     name: 'Enterprise',
-    tag: 'Maximale marge',
+    tag: 'Hoog volume',
     monthlyPriceEur: 1199,
     includedMinutes: 1600,
     includedTasks: 4500,

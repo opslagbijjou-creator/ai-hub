@@ -63,12 +63,34 @@ Overig:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_API_BASE_URL` (productie: je backend URL)
 
+Snelle start:
+
+```bash
+cp .env.example .env
+cp server/.env.example server/.env
+```
+
 ## 4) Deploy
 
 - Frontend: Netlify
 - Backend: Render (of Railway/Fly)
 
 Belangrijk: Netlify host alleen de frontend. De API draait apart.
+
+### Online-only checklist (zonder lokaal)
+
+1. Netlify env vars:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_API_BASE_URL=https://jouw-backend-url`
+2. Supabase -> Authentication -> URL Configuration:
+   - `Site URL=https://jouw-frontend-url`
+   - Additional Redirect URLs:
+     - `https://jouw-frontend-url/login`
+     - `https://jouw-frontend-url/dashboard`
+3. Supabase -> Authentication -> Providers -> Google:
+   - Authorized redirect URI in Google Cloud:
+     - `https://<project-ref>.supabase.co/auth/v1/callback`
 
 ## 5) Kernfeatures MVP 2.0
 
@@ -87,7 +109,7 @@ Belangrijk: Netlify host alleen de frontend. De API draait apart.
 - `Scale` – €799/mnd – 900 min – overage €0.95/min
 - `Enterprise` – €1199/mnd – 1600 min – overage €0.85/min
 
-De pakketten zijn afgestemd op stijgende absolute winst per pakket en een netto marge-doel boven 60% op basis van de cost assumptions in `src/lib/pricing.js`.
+De pakketten zijn afgestemd op oplopende capaciteit per pakket en een voorspelbaar kostenmodel op basis van de assumptions in `src/lib/pricing.js`.
 
 ## 7) GitHub
 

@@ -269,7 +269,23 @@
   }
 
   .wizard-steps {
-    gap: 1rem;
+    gap: 0.75rem;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 0.35rem;
+  }
+
+  .wizard-steps::before {
+    display: none;
+  }
+
+  .wizard-steps li {
+    min-width: fit-content;
+    white-space: nowrap;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    background: var(--bg-surface);
   }
 
   .wizard-main {
@@ -287,5 +303,36 @@
 
   .selection-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .wizard-logo {
+    margin-bottom: 1.2rem;
+  }
+
+  .step-content h1 {
+    font-size: 1.7rem;
+    line-height: 1.15;
+  }
+
+  .number-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .phone-number {
+    font-size: 1.05rem;
+  }
+
+  .location {
+    text-align: left;
+    margin-right: 0;
+  }
+
+  .call-simulator {
+    padding: 1.6rem 1rem;
   }
 }

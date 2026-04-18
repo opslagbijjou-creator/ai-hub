@@ -119,7 +119,7 @@ const KnowledgeBase = () => {
 
 const Overview = () => {
   const navigate = useNavigate();
-  const { assistantConfig, setAssistantConfig } = useAppContext();
+  const { assistantConfig, setAssistantConfig, apiConfigured, apiConfigMessage } = useAppContext();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -320,6 +320,12 @@ const Overview = () => {
         </h1>
         <p className="text-muted">Call-only dashboard. WhatsApp is volledig uit scope gehaald.</p>
       </div>
+
+      {!apiConfigured && (
+        <div className="glass-panel" style={{ padding: '0.8rem', marginBottom: '1rem', borderColor: 'rgba(245,158,11,0.45)' }}>
+          {apiConfigMessage}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <StatusPill label="Live" value={assistantState?.assistant?.live_status || 'not_live'} />

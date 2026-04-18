@@ -345,6 +345,22 @@
   position: relative;
 }
 
+.callstudio-toolbar {
+  padding: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.callstudio-status {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+}
+
 @media (max-width: 1024px) {
   .dashboard-layout {
     flex-direction: column;
@@ -416,5 +432,22 @@
   .settings-modal {
     width: min(620px, 96vw);
     padding: 1rem;
+  }
+
+  .callstudio-toolbar {
+    padding: 0.85rem;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .callstudio-toolbar .btn-primary,
+  .callstudio-toolbar .btn-secondary {
+    width: 100%;
+  }
+
+  .callstudio-status {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
   }
 }

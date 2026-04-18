@@ -5,13 +5,14 @@ import {
   BadgeCheck,
   BrainCircuit,
   Clock3,
-  Headset,
   Mic,
   PhoneCall,
   ShieldCheck,
   Sparkles
 } from 'lucide-react';
 import { PRICING_PLANS } from '../lib/pricing';
+import PublicFooter from '../components/PublicFooter';
+import PublicHeader from '../components/PublicHeader';
 import './LandingPage.css';
 
 const LandingPage = () => {
@@ -22,30 +23,7 @@ const LandingPage = () => {
   return (
     <div className="landing-container">
       <div className="marketing-grid"></div>
-
-      <nav className="landing-nav glass-panel">
-        <button className="nav-logo" onClick={() => navigate('/')}>
-          <div className="logo-chip">
-            <Headset size={19} />
-          </div>
-          <span className="font-heading">AI Hub Voice</span>
-        </button>
-
-        <div className="nav-links">
-          <button onClick={() => navigate('/info')}>Info</button>
-          <button onClick={() => navigate('/pricing')}>Pricing</button>
-          <button onClick={() => navigate('/login')}>Dashboard</button>
-        </div>
-
-        <div className="nav-actions">
-          <button className="btn-secondary" onClick={() => navigate('/login')}>
-            Inloggen
-          </button>
-          <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
-            Start setup <ArrowRight size={17} />
-          </button>
-        </div>
-      </nav>
+      <PublicHeader active="home" />
 
       <main className="hero-section">
         <section className="hero-content animate-fade-in">
@@ -201,14 +179,7 @@ const LandingPage = () => {
         </div>
       </section>
 
-      <footer className="marketing-footer">
-        <p>AI Hub Voice • NL-first AI bel-assistent platform</p>
-        <div>
-          <button onClick={() => navigate('/info')}>Info</button>
-          <button onClick={() => navigate('/pricing')}>Pricing</button>
-          <button onClick={() => navigate('/login')}>Login</button>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 };

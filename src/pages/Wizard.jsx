@@ -41,7 +41,7 @@ const FALLBACK_NUMBERS = [
 
 const Wizard = () => {
   const navigate = useNavigate();
-  const { setAssistantConfig } = useAppContext();
+  const { setAssistantConfig, apiConfigured, apiConfigMessage } = useAppContext();
 
   const [step, setStep] = useState(1);
   const [voices, setVoices] = useState(FALLBACK_VOICES);
@@ -295,6 +295,12 @@ const Wizard = () => {
       </div>
 
       <div className="wizard-main">
+        {!apiConfigured && (
+          <div className="glass-panel" style={{ padding: '0.8rem', marginBottom: '1rem', borderColor: 'rgba(245,158,11,0.45)' }}>
+            {apiConfigMessage}
+          </div>
+        )}
+
         {step === 1 && (
           <div className="step-content animate-fade-in">
             <h1>Train je AI assistent</h1>

@@ -237,6 +237,7 @@
 @media (max-width: 900px) {
   .webcall-panel {
     min-height: unset;
+    padding: 1rem;
   }
 
   .webcall-header {
@@ -250,5 +251,26 @@
 
   .webcall-input-form {
     min-width: 100%;
+  }
+
+  .webcall-actions > .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .webcall-transcript {
+    min-height: 220px;
+    max-height: 340px;
+  }
+
+  .webcall-input-form {
+    flex-direction: column;
+  }
+
+  .webcall-input-form .btn-primary {
+    width: 100%;
+    justify-content: center;
   }
 }

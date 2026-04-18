@@ -8,6 +8,8 @@ import {
   Workflow,
   Wrench
 } from 'lucide-react';
+import PublicFooter from '../components/PublicFooter';
+import PublicHeader from '../components/PublicHeader';
 import './LandingPage.css';
 
 const InfoPage = () => {
@@ -16,26 +18,7 @@ const InfoPage = () => {
   return (
     <div className="landing-container marketing-page">
       <div className="marketing-grid"></div>
-
-      <nav className="landing-nav glass-panel">
-        <button className="nav-logo" onClick={() => navigate('/')}>
-          <span className="font-heading">AI Hub Voice</span>
-        </button>
-
-        <div className="nav-links">
-          <button className="active-link" onClick={() => navigate('/info')}>
-            Info
-          </button>
-          <button onClick={() => navigate('/pricing')}>Pricing</button>
-          <button onClick={() => navigate('/login')}>Dashboard</button>
-        </div>
-
-        <div className="nav-actions">
-          <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
-            Start setup <ArrowRight size={16} />
-          </button>
-        </div>
-      </nav>
+      <PublicHeader active="info" />
 
       <section className="pricing-hero info-hero">
         <h1>Zo werkt jouw AI bel-assistent</h1>
@@ -114,12 +97,7 @@ const InfoPage = () => {
         </article>
       </section>
 
-      <footer className="marketing-footer">
-        <p>Wil je de complete flow testen met jouw bedrijfsdata?</p>
-        <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
-          Open setup wizard <ArrowRight size={16} />
-        </button>
-      </footer>
+      <PublicFooter />
     </div>
   );
 };

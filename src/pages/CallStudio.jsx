@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Phone, ReceiptText, RefreshCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { apiUrl } from '../lib/api';
+import { apiConfigMessage, apiUrl, hasApiBaseConfig } from '../lib/api';
 import WebCallPanel from '../components/WebCallPanel';
 
 const CallStudio = () => {
@@ -100,7 +100,13 @@ const CallStudio = () => {
         </p>
       </div>
 
-      <div className="glass-panel" style={{ padding: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+      {!hasApiBaseConfig && (
+        <div className="glass-panel" style={{ padding: '0.75rem 0.9rem', borderColor: 'rgba(245,158,11,0.45)' }}>
+          {apiConfigMessage}
+        </div>
+      )}
+
+      <div className="glass-panel callstudio-toolbar">
         <button className="btn-secondary" onClick={loadState} disabled={loading}>
           <RefreshCcw size={16} /> Vernieuw status
         </button>
@@ -108,20 +114,12 @@ const CallStudio = () => {
         <button
           className="btn-primary"
           onClick={requestInvoice}
-          disabled={invoiceLoading || loading || !assistantState?.assistant}
+          disabled={invoiceLoading || loading || !assistantState?.assistant || !hasApiBaseConfig}
         >
           <ReceiptText size={16} /> {invoiceLoading ? 'Factuur aanvragen...' : 'Factuur aanvragen'}
         </button>
 
-        <div
-          style={{
-            marginLeft: 'auto',
-            color: 'var(--text-muted)',
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'center'
-          }}
-        >
+        <div className="callstudio-status">
           Live status: <strong style={{ marginLeft: '0.35rem', color: 'var(--text-main)' }}>{assistantState?.assistant?.live_status || 'not_live'}</strong>
         </div>
       </div>
@@ -143,7 +141,7 @@ const CallStudio = () => {
         subtitle="Gebruik je microfoon of typ een bericht. Je ziet live states: Listening, Thinking, Speaking, Idle."
         initialAssistantMessage={initialAssistantMessage}
         companyName={companyName}
-        disabled={!assistantState?.assistant}
+        disabled={!assistantState?.assistant || !hasApiBaseConfig}
       />
     </div>
   );
