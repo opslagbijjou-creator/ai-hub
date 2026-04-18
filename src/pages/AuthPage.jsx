@@ -24,6 +24,21 @@ const AuthPage = () => {
     }
   }, [authLoading, navigate, user]);
 
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawOauthError =
+      hashParams.get('error_description') ||
+      hashParams.get('error') ||
+      searchParams.get('error_description') ||
+      searchParams.get('error');
+
+    if (!rawOauthError) return;
+
+    const decoded = decodeURIComponent(String(rawOauthError).replace(/\+/g, ' '));
+    setError(normalizeAuthError(decoded));
+  }, []);
+
   const normalizeAuthError = (message) => {
     const raw = String(message || '').trim();
     if (!raw) return 'Inloggen is mislukt. Probeer het opnieuw.';
@@ -98,7 +113,7 @@ const AuthPage = () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + '/dashboard'
+        redirectTo: window.location.origin + '/login'
       }
     });
     if (error) setError(normalizeAuthError(error.message));
