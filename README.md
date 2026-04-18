@@ -1,16 +1,66 @@
-# React + Vite
+# AI Hub
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend (Vite/React) + backend (Express + whatsapp-web.js) + Supabase opslag.
 
-Currently, two official plugins are available:
+## 1) Supabase SQL
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Run deze 2 scripts in je Supabase SQL Editor:
 
-## React Compiler
+- `server/sql/ai_settings_migration.sql`
+- `server/sql/whatsapp_sync_migration.sql`
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 2) Lokale run
 
-## Expanding the ESLint configuration
+Terminal 1:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+cd server
+npm install
+npm run dev
+```
+
+Terminal 2:
+
+```bash
+npm install
+npm run dev
+```
+
+## 3) Vereiste env vars
+
+`server/.env`:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `PORT` (optioneel, default `3001`)
+- `WWEBJS_DATA_PATH` (optioneel, pad voor persistente WhatsApp sessiedata)
+
+Root `.env` (frontend build):
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_API_BASE_URL` (in productie: URL van je backend, bv `https://api-jouwdomein.com`)
+
+## 4) Hosting uitleg (belangrijk)
+
+Netlify host alleen de frontend.  
+De WhatsApp backend kan niet betrouwbaar op Netlify Functions draaien (persistente browser/sessie nodig).
+
+Dus productie-opzet:
+
+1. Backend deployen op een persistente host (bijv. Render/Railway/VPS).
+2. Frontend deployen op Netlify.
+3. In Netlify env var zetten: `VITE_API_BASE_URL=https://<jouw-backend-url>`.
+4. Redeploy frontend.
+
+## 5) GitHub
+
+```bash
+git push origin main
+```
+
+Repo: `https://github.com/opslagbijjou-creator/ai-hub`

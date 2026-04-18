@@ -52,7 +52,9 @@ process.on('uncaughtException', (error) => {
 });
 
 const PORT = process.env.PORT || 3001;
-const WWEBJS_DATA_PATH = path.join(__dirname, '.wwebjs_auth');
+const WWEBJS_DATA_PATH = process.env.WWEBJS_DATA_PATH
+  ? path.resolve(process.env.WWEBJS_DATA_PATH)
+  : path.join(__dirname, '.wwebjs_auth');
 const LEGACY_WWEBJS_SESSION_DIR = path.join(WWEBJS_DATA_PATH, 'session');
 const MAX_CHAT_HISTORY = 20;
 
@@ -96,6 +98,14 @@ const openai = new OpenAI({
 });
 
 const userStates = new Map();
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    uptimeSec: Math.round(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
+});
 
 function parsePositiveInt(value, defaultValue, maxValue) {
   const parsed = Number.parseInt(value, 10);
