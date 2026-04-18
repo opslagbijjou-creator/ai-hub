@@ -12,10 +12,6 @@ services:
       - key: PORT
         value: "3001"
       - key: WWEBJS_DATA_PATH
-        value: /opt/render/project/src/.wwebjs_auth
+        value: /tmp/.wwebjs_auth
       - key: PUPPETEER_EXECUTABLE_PATH
         value: /usr/bin/chromium
-    disk:
-      name: whatsapp-session-data
-      mountPath: /opt/render/project/src
-      sizeGB: 2
