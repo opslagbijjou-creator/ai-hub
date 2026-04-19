@@ -323,14 +323,19 @@ function getVoiceOption(voiceKey) {
 }
 
 function buildAssistantPrompt({ profile = {}, assistant = {}, voice = {}, number = {} }) {
-  const services = Array.isArray(profile.services) ? profile.services : [];
+  const safeProfile = profile && typeof profile === 'object' ? profile : {};
+  const safeAssistant = assistant && typeof assistant === 'object' ? assistant : {};
+  const safeVoice = voice && typeof voice === 'object' ? voice : {};
+  const safeNumber = number && typeof number === 'object' ? number : {};
+
+  const services = Array.isArray(safeProfile.services) ? safeProfile.services : [];
   const servicesText = services.length > 0 ? services.join(', ') : 'niet gespecificeerd';
-  const openingHours = profile.opening_hours || profile.openingHours || 'onbekend';
-  const pricing = profile.pricing || 'niet ingevuld';
-  const goals = profile.goals || 'beantwoord vragen en help met opvolging';
-  const tone = profile.tone_of_voice || profile.toneOfVoice || 'vriendelijk en duidelijk';
-  const company = profile.company_name || assistant.display_name || 'dit bedrijf';
-  const selectedNumber = number.e164 || 'nog niet live';
+  const openingHours = safeProfile.opening_hours || safeProfile.openingHours || 'onbekend';
+  const pricing = safeProfile.pricing || 'niet ingevuld';
+  const goals = safeProfile.goals || 'beantwoord vragen en help met opvolging';
+  const tone = safeProfile.tone_of_voice || safeProfile.toneOfVoice || 'vriendelijk en duidelijk';
+  const company = safeProfile.company_name || safeAssistant.display_name || 'dit bedrijf';
+  const selectedNumber = safeNumber.e164 || 'nog niet live';
 
   return [
     'Je bent een Nederlandse AI telefoon-assistent voor inkomende klantgesprekken.',
@@ -340,7 +345,7 @@ function buildAssistantPrompt({ profile = {}, assistant = {}, voice = {}, number
     `Openingstijden: ${openingHours}`,
     `Doel van gesprek: ${goals}`,
     `Tone of voice: ${tone}`,
-    `Gekozen stem: ${voice.display_name || 'standaard stem'}`,
+    `Gekozen stem: ${safeVoice.display_name || 'standaard stem'}`,
     `Gekozen nummer: ${selectedNumber}`,
     'Regels:',
     '- Geef korte, natuurlijke antwoorden.',

@@ -507,17 +507,22 @@ function buildAssistantPrompt(
     faqs = [],
   }: Record<string, any>,
 ) {
-  const services = Array.isArray(profile.services) ? profile.services : [];
+  const safeProfile = profile && typeof profile === "object" ? profile : {};
+  const safeAssistant = assistant && typeof assistant === "object" ? assistant : {};
+  const safeVoice = voice && typeof voice === "object" ? voice : {};
+  const safeNumber = number && typeof number === "object" ? number : {};
+
+  const services = Array.isArray(safeProfile.services) ? safeProfile.services : [];
   const servicesText = services.length > 0 ? services.join(", ") : "niet gespecificeerd";
-  const openingHours = profile.opening_hours || profile.openingHours || "onbekend";
-  const pricing = profile.pricing || "niet ingevuld";
-  const goals = profile.goals || "beantwoord vragen en help met opvolging";
-  const tone = profile.tone_of_voice || profile.toneOfVoice || "vriendelijk en duidelijk";
-  const company = profile.company_name || assistant.display_name || "dit bedrijf";
-  const selectedNumber = number.e164 || "nog niet live";
-  const websiteUrl = profile.website_url || "niet ingevuld";
-  const roleDescription = profile.role_description || "servicegerichte receptioniste";
-  const handoffRules = profile.handoff_rules || "stuur door bij spoed of complexe cases";
+  const openingHours = safeProfile.opening_hours || safeProfile.openingHours || "onbekend";
+  const pricing = safeProfile.pricing || "niet ingevuld";
+  const goals = safeProfile.goals || "beantwoord vragen en help met opvolging";
+  const tone = safeProfile.tone_of_voice || safeProfile.toneOfVoice || "vriendelijk en duidelijk";
+  const company = safeProfile.company_name || safeAssistant.display_name || "dit bedrijf";
+  const selectedNumber = safeNumber.e164 || "nog niet live";
+  const websiteUrl = safeProfile.website_url || "niet ingevuld";
+  const roleDescription = safeProfile.role_description || "servicegerichte receptioniste";
+  const handoffRules = safeProfile.handoff_rules || "stuur door bij spoed of complexe cases";
   const faqPreview = Array.isArray(faqs) && faqs.length > 0
     ? faqs
       .slice(0, 5)
@@ -539,7 +544,7 @@ function buildAssistantPrompt(
     `Rol: ${roleDescription}`,
     `Doorstuurregels: ${handoffRules}`,
     `Tone of voice: ${tone}`,
-    `Gekozen stem: ${voice.display_name || "standaard stem"}`,
+    `Gekozen stem: ${safeVoice.display_name || "standaard stem"}`,
     `Gekozen nummer: ${selectedNumber}`,
     `Beschikbaarheid: ${availabilityMode}`,
     `FAQ context: ${faqPreview}`,
