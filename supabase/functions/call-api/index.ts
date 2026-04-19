@@ -1321,7 +1321,9 @@ function buildWizardChecklist(params: {
   const completedCount = checklist.filter((entry) => entry.done).length;
   const completed = completedCount === checklist.length;
   const savedStep = normalizeStep(assistant?.setup_step, fallbackStep || 1);
-  const resolvedStep = completed ? checklist.length : Math.min(savedStep, fallbackStep || savedStep);
+  // Toon altijd de eerstvolgende onvoltooide stap als bron van waarheid.
+  // savedStep kan achterlopen (bijv. na stap 1 opslaan), waardoor de UI anders terugvalt naar stap 1.
+  const resolvedStep = completed ? checklist.length : (fallbackStep || savedStep);
 
   return {
     step: resolvedStep,
