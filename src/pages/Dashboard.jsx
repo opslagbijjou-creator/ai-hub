@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
+import DashboardTopbar from '../components/DashboardTopbar';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
@@ -1344,16 +1345,20 @@ const Dashboard = () => {
   return (
     <div className="dashboard-layout">
       <Sidebar />
-      <main className="dashboard-content">
-        <Routes>
-          <Route path="/" element={<Overview />} />
-          <Route path="/admin" element={<AdminConsole />} />
-          <Route path="/catalog" element={<Catalog />} />
-          <Route path="/knowledge-base" element={<KnowledgeBase />} />
-          <Route path="/call-studio" element={<CallStudio />} />
-          <Route path="*" element={<Overview />} />
-        </Routes>
-      </main>
+      <div className="dashboard-workspace">
+        <DashboardTopbar />
+        <main className="dashboard-content">
+          <Routes>
+            <Route path="/" element={<Overview />} />
+            <Route path="/integrations" element={<Overview />} />
+            <Route path="/admin" element={<AdminConsole />} />
+            <Route path="/catalog" element={<Catalog />} />
+            <Route path="/knowledge-base" element={<KnowledgeBase />} />
+            <Route path="/call-studio" element={<CallStudio />} />
+            <Route path="*" element={<Overview />} />
+          </Routes>
+        </main>
+      </div>
     </div>
   );
 };

@@ -1,13 +1,17 @@
 .dashboard-layout {
-  display: flex;
   width: 100%;
   min-height: 100vh;
-  background: #f2f5fb;
+  background: #f7f9fb;
+}
+
+.dashboard-workspace {
+  margin-left: 16rem;
+  width: calc(100% - 16rem);
+  min-height: 100vh;
 }
 
 .dashboard-content {
-  flex: 1;
-  padding: 1.6rem 1.8rem 2.1rem;
+  padding: 6.15rem 1.95rem 2.1rem;
   overflow-y: auto;
   height: 100vh;
 }
@@ -15,6 +19,17 @@
 .dashboard-shell {
   max-width: 1240px;
   margin: 0 auto;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-workspace {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .dashboard-content {
+    padding: 5.35rem 1rem 1.5rem;
+  }
 }
 
 .dashboard-overview {
