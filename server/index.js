@@ -29,9 +29,32 @@ const {
   ALLOW_SIMULATED_PROVISIONING = 'true'
 } = process.env;
 
+const LEGACY_SERVER_ALLOW_PRODUCTION = String(process.env.ALLOW_LEGACY_SERVER_IN_PRODUCTION || '').toLowerCase() === 'true';
+const LEGACY_SERVER_DISABLED_IN_PRODUCTION =
+  process.env.NODE_ENV === 'production' && !LEGACY_SERVER_ALLOW_PRODUCTION;
+
 const twilioClient =
   TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) : null;
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+app.use((req, res, next) => {
+  if (!LEGACY_SERVER_DISABLED_IN_PRODUCTION) {
+    return next();
+  }
+
+  res.set('Cache-Control', 'no-store');
+  if (req.path === '/api/health') {
+    return res.status(410).json({
+      ok: false,
+      deprecated: true,
+      backend: 'supabase-call-api'
+    });
+  }
+
+  return res.status(410).json({
+    error: 'Legacy Express backend is disabled in production. Use the Supabase call-api function.'
+  });
+});
 
 function buildSupabaseClient(apiKey, accessToken = null) {
   if (!SUPABASE_URL || !apiKey) return null;
@@ -80,6 +103,17 @@ const VOICE_OPTIONS = [
     twilioVoice: 'alice'
   }
 ];
+
+const LEGACY_VOICE_KEY_BY_ID = {
+  cgSgspJ2msm6clMCkdW9: 'jessica_nl',
+  cjVigY5qzO86Huf0OWal: 'eric_nl',
+  EXAVITQu4vr4xnSDxMaL: 'lotte_nl'
+};
+
+const VOICE_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let cachedDutchVoiceOptions = [];
+let cachedDutchVoiceOptionsAt = 0;
 
 const DEFAULT_NUMBERS = [
   { e164: '+31208081234', label: 'Amsterdam, NL', countryCode: 'NL', source: 'catalog' },
@@ -320,6 +354,121 @@ function onboardingFromPayload(payload = {}) {
 
 function getVoiceOption(voiceKey) {
   return VOICE_OPTIONS.find((voice) => voice.key === voiceKey) || VOICE_OPTIONS[0];
+}
+
+function normalizeLookupText(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function voiceMatchesDutchProfile(voice = {}) {
+  const labelValues = voice?.labels && typeof voice.labels === 'object' ? Object.values(voice.labels) : [];
+  const verifiedLanguageValues = Array.isArray(voice?.verified_languages)
+    ? voice.verified_languages.flatMap((entry) => [entry?.language, entry?.locale, entry?.name])
+    : [];
+
+  const candidateValues = [...labelValues, ...verifiedLanguageValues, voice?.description, voice?.name]
+    .map((entry) => normalizeLookupText(entry))
+    .filter(Boolean);
+
+  return candidateValues.some(
+    (entry) =>
+      entry === 'dutch' ||
+      entry === 'nederlands' ||
+      entry.startsWith('nl') ||
+      entry.includes('dutch') ||
+      entry.includes('nederlands') ||
+      entry.includes('netherlands') ||
+      entry.includes('nederland')
+  );
+}
+
+function mergeVoiceOptions(primary, fallback) {
+  const merged = new Map();
+
+  for (const option of [...primary, ...fallback]) {
+    if (!option?.key) continue;
+    if (!merged.has(option.key)) {
+      merged.set(option.key, option);
+    }
+  }
+
+  return Array.from(merged.values()).sort((left, right) => {
+    const previewScore = Number(Boolean(right?.previewUrl)) - Number(Boolean(left?.previewUrl));
+    if (previewScore !== 0) return previewScore;
+    return safeText(left?.name).localeCompare(safeText(right?.name), 'nl');
+  });
+}
+
+function mapElevenLabsVoiceOption(voice = {}) {
+  const voiceId = safeText(voice?.voice_id);
+  const previewUrl = safeText(voice?.preview_url);
+  const labels = voice?.labels && typeof voice.labels === 'object' ? voice.labels : {};
+  const accent = safeText(labels?.accent || labels?.language || 'Nederlands');
+  const gender = safeText(labels?.gender);
+  const descriptor = [accent, gender].filter(Boolean).join(' • ');
+
+  return {
+    key: LEGACY_VOICE_KEY_BY_ID[voiceId] || `elevenlabs_${voiceId}`,
+    name: safeText(voice?.name, 'Nederlandse stem'),
+    provider: 'elevenlabs',
+    externalVoiceId: voiceId,
+    previewUrl: previewUrl || null,
+    twilioVoice: 'alice',
+    category: safeText(voice?.category || 'elevenlabs'),
+    description: safeText(voice?.description || descriptor || 'Nederlandse ElevenLabs-stem'),
+    labels
+  };
+}
+
+async function fetchDutchElevenLabsVoiceOptions() {
+  if (!ELEVENLABS_API_KEY) return [];
+
+  try {
+    const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY
+      }
+    });
+
+    if (!response.ok) {
+      const reason = await response.text();
+      console.warn('ElevenLabs voices waarschuwing:', reason.slice(0, 240));
+      return [];
+    }
+
+    const payload = await response.json();
+    const voices = Array.isArray(payload?.voices) ? payload.voices : [];
+
+    return voices
+      .filter((voice) => voiceMatchesDutchProfile(voice))
+      .map((voice) => mapElevenLabsVoiceOption(voice))
+      .filter((voice) => Boolean(voice.externalVoiceId));
+  } catch (error) {
+    console.warn('ElevenLabs voices fout:', error?.message || error);
+    return [];
+  }
+}
+
+async function getAvailableVoiceOptions() {
+  const cacheIsFresh =
+    cachedDutchVoiceOptions.length > 0 && Date.now() - cachedDutchVoiceOptionsAt < VOICE_OPTIONS_CACHE_TTL_MS;
+
+  if (cacheIsFresh) {
+    return cachedDutchVoiceOptions;
+  }
+
+  const remoteVoices = await fetchDutchElevenLabsVoiceOptions();
+  const resolvedVoices = remoteVoices.length ? mergeVoiceOptions(remoteVoices, VOICE_OPTIONS) : VOICE_OPTIONS;
+
+  cachedDutchVoiceOptions = resolvedVoices;
+  cachedDutchVoiceOptionsAt = Date.now();
+
+  return resolvedVoices;
+}
+
+async function resolveVoiceOptionByKey(voiceKey) {
+  const availableVoices = await getAvailableVoiceOptions();
+  return availableVoices.find((voice) => voice.key === voiceKey) || getVoiceOption(voiceKey);
 }
 
 function buildAssistantPrompt({ profile = {}, assistant = {}, voice = {}, number = {} }) {
@@ -736,8 +885,8 @@ route('get', '/api/health', async (_req, res) => {
   });
 });
 
-route('get', '/api/voices/options', (_req, res) => {
-  res.json(VOICE_OPTIONS);
+route('get', '/api/voices/options', async (_req, res) => {
+  res.json(await getAvailableVoiceOptions());
 });
 
 route('get', '/api/pricing/plans', (_req, res) => {
@@ -857,7 +1006,7 @@ async function handleOnboardingSave(req, res, overridePayload = null) {
     const dbClient = getDbClient(req.accessToken);
     const assistant = await ensureAssistant(dbClient, req.user.id);
     const payload = onboardingFromPayload(overridePayload || req.body || {});
-    const selectedVoiceOption = getVoiceOption(payload.voiceKey);
+    const selectedVoiceOption = await resolveVoiceOptionByKey(payload.voiceKey);
 
     const profilePayload = {
       assistant_id: assistant.id,

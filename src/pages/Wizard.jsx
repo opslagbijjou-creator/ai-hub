@@ -50,6 +50,13 @@ const FALLBACK_VOICES = [
     provider: 'elevenlabs',
     previewUrl:
       'https://storage.googleapis.com/eleven-public-prod/premade/voices/cjVigY5qzO86Huf0OWal/d098fda0-6456-4030-b3d8-63aa048c9070.mp3'
+  },
+  {
+    key: 'lotte_nl',
+    name: 'Lotte',
+    provider: 'elevenlabs',
+    previewUrl:
+      'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/5f713f17-8f41-4f5b-a0f2-ea0b2f9be8f5.mp3'
   }
 ];
 
@@ -106,6 +113,14 @@ const normalizeSchedule = (value) => {
 };
 
 const hasAtLeastOneFaq = (faqItems) => faqItems.some((item) => item.question.trim() && item.answer.trim());
+
+const getVoiceSubtitle = (voice) => {
+  if (voice?.description) return voice.description;
+
+  const accent = voice?.labels?.accent || voice?.labels?.language || '';
+  const gender = voice?.labels?.gender || '';
+  return [accent, gender].filter(Boolean).join(' • ') || 'Nederlandse ElevenLabs-stem';
+};
 
 const Wizard = () => {
   const navigate = useNavigate();
@@ -847,7 +862,7 @@ const Wizard = () => {
           </div>
 
           <div className="voice-block">
-            <small>AANBEVOLEN</small>
+            <small>AANBEVOLEN NEDERLANDSE STEMMEN</small>
             {recommendedVoices.map((voice) => (
               <button
                 key={voice.key}
@@ -857,7 +872,7 @@ const Wizard = () => {
               >
                 <div>
                   <strong>{voice.name}</strong>
-                  <p>Verwelkomend en geschikt voor vrijwel elke branche.</p>
+                  <p>{getVoiceSubtitle(voice)}</p>
                 </div>
                 <div className="voice-actions">
                   <span className="voice-play" onClick={(event) => {
@@ -874,7 +889,7 @@ const Wizard = () => {
 
           {moreVoices.length > 0 && (
             <div className="voice-block">
-              <small>MEER STEMMEN</small>
+              <small>MEER NEDERLANDSE STEMMEN</small>
               {moreVoices.map((voice) => (
                 <button
                   key={voice.key}
@@ -884,7 +899,7 @@ const Wizard = () => {
                 >
                   <div>
                     <strong>{voice.name}</strong>
-                    <p>{voice.provider || 'Voice profile'}</p>
+                    <p>{getVoiceSubtitle(voice)}</p>
                   </div>
                   <span className="voice-play" onClick={(event) => {
                     event.stopPropagation();

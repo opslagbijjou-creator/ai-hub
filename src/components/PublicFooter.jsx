@@ -47,7 +47,7 @@ const PublicFooter = () => {
               className="text-slate-500 hover:text-slate-900 transition-colors hover:underline decoration-indigo-500 underline-offset-4"
               onClick={() => navigateTo('/contact')}
             >
-              Status
+              Contact
             </button>
           </div>
 

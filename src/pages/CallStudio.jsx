@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Phone, ReceiptText, RefreshCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { apiConfigMessage, apiUrl, hasApiBaseConfig } from '../lib/api';
@@ -13,7 +13,7 @@ const CallStudio = () => {
   const [invoiceMessage, setInvoiceMessage] = useState('');
   const [error, setError] = useState('');
 
-  const loadState = async () => {
+  const loadState = useCallback(async () => {
     setLoading(true);
     setError('');
 
@@ -42,7 +42,7 @@ const CallStudio = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setIsAdmin]);
 
   const requestInvoice = async () => {
     setInvoiceLoading(true);
@@ -84,7 +84,7 @@ const CallStudio = () => {
 
   useEffect(() => {
     loadState();
-  }, []);
+  }, [loadState]);
 
   const companyName =
     assistantState?.profile?.company_name || assistantState?.assistant?.display_name || 'jouw bedrijf';

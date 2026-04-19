@@ -1,16 +1,34 @@
-import React, { useState } from 'react';
+import React from 'react';
 import PublicFooter from '../components/PublicFooter';
 import PublicHeader from '../components/PublicHeader';
+import { policyConfig } from '../lib/policy';
 import './Belliq.css';
 
+const contactCards = [
+  {
+    title: 'Support',
+    description: 'Voor productvragen, onboarding en operationele hulp.',
+    value: policyConfig.supportEmail,
+    cta: `mailto:${policyConfig.supportEmail}`,
+    ctaLabel: 'Mail support'
+  },
+  {
+    title: 'Privacy en DSAR',
+    description: 'Voor inzage-, correctie-, verwijderings- of bezwaarverzoeken.',
+    value: policyConfig.dsarEmail,
+    cta: `mailto:${policyConfig.dsarEmail}`,
+    ctaLabel: 'Mail privacy'
+  },
+  {
+    title: 'Security incident',
+    description: 'Voor vermoedens van misbruik, datalekken of ongeautoriseerde toegang.',
+    value: policyConfig.securityEmail,
+    cta: `mailto:${policyConfig.securityEmail}`,
+    ctaLabel: 'Meld incident'
+  }
+];
+
 const ContactPage = () => {
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    setSubmitted(true);
-  };
-
   return (
     <div className="belliq-page bg-surface selection:bg-primary-fixed-dim">
       <PublicHeader active="resources" />
@@ -18,167 +36,61 @@ const ContactPage = () => {
       <main className="belliq-main pb-24">
         <section className="max-w-7xl mx-auto px-4 sm:px-6 text-center mb-16 sm:mb-20">
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tighter text-on-surface mb-6 leading-tight font-headline">
-            Laten we <span className="text-primary italic">praten</span>.
+            Direct contact,
+            <span className="text-primary italic"> zonder nep-formulier</span>
           </h1>
-          <p className="text-on-surface-variant text-lg md:text-xl max-w-2xl mx-auto font-medium">
-            Vragen over onze AI-oplossingen? We staan klaar om je te helpen met een rustige, doordachte aanpak.
+          <p className="text-on-surface-variant text-lg md:text-xl max-w-3xl mx-auto font-medium">
+            Deze pagina verstuurt geen verborgen form submits. Voor support, privacy en security gebruik je de directe contactkanalen hieronder.
           </p>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-8 mb-16 sm:mb-20">
           <div className="lg:col-span-7 bg-surface-container-lowest rounded-lg p-6 sm:p-10 shadow-sm border border-outline-variant/10">
-            <h2 className="text-2xl font-bold mb-8 tracking-tight font-headline">Stuur ons een bericht</h2>
-            <form className="space-y-6" onSubmit={handleSubmit}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant ml-1">Naam</label>
-                  <input
-                    className="w-full bg-surface-container-low border-none rounded-lg px-6 py-4 focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-surface-dim"
-                    placeholder="Jouw naam"
-                    type="text"
-                    required
-                  />
+            <h2 className="text-2xl font-bold mb-6 tracking-tight font-headline">Contactkanalen</h2>
+            <div className="space-y-5">
+              {contactCards.map((card) => (
+                <div key={card.title} className="rounded-2xl border border-outline-variant/20 bg-surface-container-low p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant mb-2">{card.title}</p>
+                  <h3 className="text-xl font-bold text-on-surface mb-2">{card.value}</h3>
+                  <p className="text-on-surface-variant mb-4">{card.description}</p>
+                  <a
+                    href={card.cta}
+                    className="inline-flex items-center justify-center px-5 py-3 rounded-xl bg-primary text-white font-semibold hover:brightness-95 transition"
+                  >
+                    {card.ctaLabel}
+                  </a>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant ml-1">Email</label>
-                  <input
-                    className="w-full bg-surface-container-low border-none rounded-lg px-6 py-4 focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-surface-dim"
-                    placeholder="naam@bedrijf.nl"
-                    type="email"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant ml-1">Onderwerp</label>
-                <select className="w-full bg-surface-container-low border-none rounded-lg px-6 py-4 focus:ring-2 focus:ring-primary/40 transition-all text-on-surface-variant">
-                  <option>Algemene vraag</option>
-                  <option>Technische support</option>
-                  <option>Sales en partnerships</option>
-                  <option>Anders</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant ml-1">Bericht</label>
-                <textarea
-                  className="w-full bg-surface-container-low border-none rounded-lg px-6 py-4 focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-surface-dim"
-                  placeholder="Hoe kunnen we je helpen?"
-                  rows="5"
-                  required
-                ></textarea>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-gradient-to-r from-primary to-primary-container text-white py-5 rounded-lg font-bold text-lg hover:scale-[1.01] transition-all active:scale-[0.98] shadow-lg shadow-primary/20"
-              >
-                Verstuur bericht
-              </button>
-
-              {submitted ? (
-                <p className="text-sm text-primary font-semibold">Bedankt, we hebben je bericht ontvangen en nemen snel contact op.</p>
-              ) : null}
-            </form>
+              ))}
+            </div>
           </div>
 
           <div className="lg:col-span-5 space-y-8">
             <div className="bg-surface-container-low rounded-lg p-8 group overflow-hidden relative">
-              <div className="flex items-start justify-between mb-12">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-primary mb-2">Hoofdkantoor</p>
-                  <h3 className="text-2xl font-bold text-on-surface leading-tight font-headline">
-                    Herengracht 450
-                    <br />
-                    1017 CA Amsterdam
-                  </h3>
-                </div>
-                <div className="bg-surface-container-lowest p-3 rounded-full shadow-sm">
-                  <span className="material-symbols-outlined text-primary">location_on</span>
-                </div>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary mb-2">Correspondentieadres</p>
+              <h3 className="text-2xl font-bold text-on-surface leading-tight font-headline mb-4">
+                {policyConfig.legalEntity}
+              </h3>
+              <div className="text-on-surface-variant leading-relaxed space-y-1">
+                {policyConfig.registeredAddress.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
               </div>
-
-              <div className="relative h-48 rounded-lg overflow-hidden bg-surface-dim mb-6">
-                <img
-                  className="w-full h-full object-cover grayscale opacity-50 contrast-125"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuA5PeenrCKYk0dAIy1aw3JuXIpACIjoSum5GySk2BJYE_uoDsdAdu4nnAN_xq-u7m6NIbPx3wyeYD4wTvlBQH2ZrdgIYb8uidAe2REkJ_ddRo8ticzdtKfgvm3gO9Ma5kJPtzvqbis5ox6ga6VIs8OPtvr8V1VEujPYi0H440Gcrv7I9Kzedwn6ucVEcHhmaCZ3atO5EkmgHP3QmHSLOoJreuQtQh28PG2kSe1vWrtVIbXDLaCACWuxIfmvTN1gBN3B2TD9bmKKRp8"
-                  alt="Amsterdam kaart"
-                />
-                <div className="absolute inset-0 bg-primary/10 mix-blend-multiply"></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center animate-pulse">
-                    <div className="w-4 h-4 bg-primary rounded-full shadow-[0_0_20px_rgba(53,37,205,0.8)]"></div>
-                  </div>
-                </div>
-              </div>
-
-              <a
-                className="inline-flex items-center text-sm font-bold text-primary group-hover:gap-2 transition-all"
-                href="https://maps.google.com"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open in Google Maps <span className="material-symbols-outlined text-sm ml-1">arrow_outward</span>
-              </a>
-            </div>
-
-            <div className="bg-surface-container-lowest rounded-lg p-8 border border-outline-variant/10 flex flex-col justify-between">
-              <div className="space-y-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
-                    <span className="material-symbols-outlined text-xl">mail</span>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-on-surface-variant">Email ons</p>
-                    <p className="font-bold text-on-surface">hallo@belliq.ai</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
-                    <span className="material-symbols-outlined text-xl">chat_bubble</span>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-on-surface-variant">Live support</p>
-                    <p className="font-bold text-on-surface">Ma-Vr, 09:00 - 18:00</p>
-                  </div>
-                </div>
+              <div className="mt-6 rounded-2xl bg-white/70 border border-outline-variant/20 p-4 text-sm text-on-surface-variant">
+                Bevestig vóór publieke launch nog de definitieve juridische entiteit en eventuele registratiedetails op deze pagina.
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-lg p-6 border border-outline-variant/10 hover:shadow-md transition-shadow">
-                <span className="material-symbols-outlined text-primary mb-3">help</span>
-                <p className="font-bold text-sm">Helpcentrum</p>
-                <p className="text-xs text-on-surface-variant mt-1">Vind antwoorden in onze gidsen.</p>
+            <div className="bg-surface-container-lowest rounded-lg p-8 border border-outline-variant/10 flex flex-col gap-6">
+              <div>
+                <p className="text-xs font-medium text-on-surface-variant mb-2">Responsvenster</p>
+                <p className="font-bold text-on-surface">Ma-Vr, 09:00 - 18:00</p>
               </div>
-              <div className="bg-white rounded-lg p-6 border border-outline-variant/10 hover:shadow-md transition-shadow">
-                <span className="material-symbols-outlined text-primary mb-3">integration_instructions</span>
-                <p className="font-bold text-sm">Docs</p>
-                <p className="text-xs text-on-surface-variant mt-1">API en integratie documentatie.</p>
+              <div>
+                <p className="text-xs font-medium text-on-surface-variant mb-2">Belangrijk</p>
+                <p className="text-on-surface-variant">
+                  Gebruik voor privacyverzoeken altijd {policyConfig.dsarEmail} en voor securitymeldingen {policyConfig.securityEmail}, zodat het juiste proces direct start.
+                </p>
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mt-20 sm:mt-32">
-          <div className="bg-on-primary-fixed rounded-lg p-8 sm:p-12 md:p-20 text-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-primary/20 blur-[120px] rounded-full -mr-48 -mt-48"></div>
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-400/10 blur-[80px] rounded-full -ml-32 -mb-32"></div>
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-6 relative z-10 font-headline">Blijf op de hoogte</h2>
-            <p className="text-on-primary-container text-lg mb-10 max-w-xl mx-auto relative z-10">
-              Ontvang maandelijks onze visie op de toekomst van AI, zonder de ruis.
-            </p>
-            <div className="max-w-md mx-auto flex flex-col md:flex-row gap-4 relative z-10">
-              <input
-                className="flex-grow bg-white/10 border-white/20 text-white rounded-lg px-6 py-4 focus:ring-2 focus:ring-primary placeholder:text-white/40 backdrop-blur-sm"
-                placeholder="jouw@email.nl"
-                type="email"
-              />
-              <button className="bg-white text-on-primary-fixed px-8 py-4 rounded-lg font-bold hover:scale-105 transition-transform active:scale-95">
-                Inschrijven
-              </button>
             </div>
           </div>
         </section>

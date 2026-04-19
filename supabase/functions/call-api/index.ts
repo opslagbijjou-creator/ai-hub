@@ -63,6 +63,17 @@ const VOICE_OPTIONS = [
   },
 ];
 
+const LEGACY_VOICE_KEY_BY_ID: Record<string, string> = {
+  cgSgspJ2msm6clMCkdW9: "jessica_nl",
+  cjVigY5qzO86Huf0OWal: "eric_nl",
+  EXAVITQu4vr4xnSDxMaL: "lotte_nl",
+};
+
+const VOICE_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let cachedDutchVoiceOptions: Array<Record<string, any>> = [];
+let cachedDutchVoiceOptionsAt = 0;
+
 const AVATAR_OPTIONS = [
   { key: "avatar_01", label: "Robin", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Robin" },
   { key: "avatar_02", label: "Sophie", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Sophie" },
@@ -229,6 +240,133 @@ function normalizeBoolean(value: unknown, fallback = false) {
     if (["0", "false", "no", "nee", "uit", "off"].includes(normalized)) return false;
   }
   return fallback;
+}
+
+function normalizeLookupText(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function voiceMatchesDutchProfile(voice: Record<string, any>) {
+  const labelValues =
+    voice?.labels && typeof voice.labels === "object"
+      ? Object.values(voice.labels)
+      : [];
+  const verifiedLanguageValues = Array.isArray(voice?.verified_languages)
+    ? voice.verified_languages.flatMap((entry: Record<string, any>) => [
+      entry?.language,
+      entry?.locale,
+      entry?.name,
+    ])
+    : [];
+
+  const candidateValues = [
+    ...labelValues,
+    ...verifiedLanguageValues,
+    voice?.description,
+    voice?.name,
+  ]
+    .map((entry) => normalizeLookupText(entry))
+    .filter(Boolean);
+
+  return candidateValues.some((entry) => (
+    entry === "dutch" ||
+    entry === "nederlands" ||
+    entry.startsWith("nl") ||
+    entry.includes("dutch") ||
+    entry.includes("nederlands") ||
+    entry.includes("netherlands") ||
+    entry.includes("nederland")
+  ));
+}
+
+function mergeVoiceOptions(primary: Array<Record<string, any>>, fallback: Array<Record<string, any>>) {
+  const merged = new Map<string, Record<string, any>>();
+
+  for (const option of [...primary, ...fallback]) {
+    if (!option?.key) continue;
+    if (!merged.has(option.key)) {
+      merged.set(option.key, option);
+    }
+  }
+
+  return Array.from(merged.values()).sort((left, right) => {
+    const previewScore = Number(Boolean(right?.previewUrl)) - Number(Boolean(left?.previewUrl));
+    if (previewScore !== 0) return previewScore;
+    return safeText(left?.name).localeCompare(safeText(right?.name), "nl");
+  });
+}
+
+function mapElevenLabsVoiceOption(voice: Record<string, any>) {
+  const voiceId = safeText(voice?.voice_id);
+  const previewUrl = safeText(voice?.preview_url);
+  const labels = voice?.labels && typeof voice.labels === "object" ? voice.labels : {};
+  const accent = safeText(labels?.accent || labels?.language || "Nederlands");
+  const gender = safeText(labels?.gender);
+  const descriptor = [accent, gender].filter(Boolean).join(" • ");
+
+  return {
+    key: LEGACY_VOICE_KEY_BY_ID[voiceId] || `elevenlabs_${voiceId}`,
+    name: safeText(voice?.name, "Nederlandse stem"),
+    provider: "elevenlabs",
+    externalVoiceId: voiceId,
+    previewUrl: previewUrl || null,
+    twilioVoice: "alice",
+    category: safeText(voice?.category || "elevenlabs"),
+    description: safeText(voice?.description || descriptor || "Nederlandse ElevenLabs-stem"),
+    labels,
+  };
+}
+
+async function fetchDutchElevenLabsVoiceOptions() {
+  if (!ELEVENLABS_API_KEY) return [];
+
+  try {
+    const response = await fetch("https://api.elevenlabs.io/v1/voices", {
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY,
+      },
+    });
+
+    if (!response.ok) {
+      const reason = await response.text();
+      console.warn("ElevenLabs voices waarschuwing:", reason.slice(0, 240));
+      return [];
+    }
+
+    const payload = await response.json();
+    const voices = Array.isArray(payload?.voices) ? payload.voices : [];
+
+    return voices
+      .filter((voice: Record<string, any>) => voiceMatchesDutchProfile(voice))
+      .map((voice: Record<string, any>) => mapElevenLabsVoiceOption(voice))
+      .filter((voice: Record<string, any>) => Boolean(voice.externalVoiceId));
+  } catch (error) {
+    console.warn("ElevenLabs voices fout:", (error as any)?.message || error);
+    return [];
+  }
+}
+
+async function getAvailableVoiceOptions() {
+  const cacheIsFresh =
+    cachedDutchVoiceOptions.length > 0 &&
+    (Date.now() - cachedDutchVoiceOptionsAt) < VOICE_OPTIONS_CACHE_TTL_MS;
+
+  if (cacheIsFresh) {
+    return cachedDutchVoiceOptions;
+  }
+
+  const remoteVoices = await fetchDutchElevenLabsVoiceOptions();
+  const resolvedVoices = remoteVoices.length ? mergeVoiceOptions(remoteVoices, VOICE_OPTIONS) : VOICE_OPTIONS;
+
+  cachedDutchVoiceOptions = resolvedVoices;
+  cachedDutchVoiceOptionsAt = Date.now();
+
+  return resolvedVoices;
+}
+
+async function resolveVoiceOptionByKey(voiceKey: string) {
+  const availableVoices = await getAvailableVoiceOptions();
+  return availableVoices.find((voice) => voice.key === voiceKey) || getVoiceOption(voiceKey);
 }
 
 function normalizeStep(value: unknown, fallback = 1) {
@@ -2393,7 +2531,7 @@ async function handleOnboardingSave(
 
     const resolvedVoiceKey = payload.voiceKey || existingVoice?.voice_key || VOICE_OPTIONS[0].key;
     if (resolvedVoiceKey) {
-      const selectedVoiceOption = getVoiceOption(resolvedVoiceKey);
+      const selectedVoiceOption = await resolveVoiceOptionByKey(resolvedVoiceKey);
       await dbClient.from("assistant_voices").update({ selected: false, updated_at: nowIso() }).eq("assistant_id", assistant.id);
       const { error: voiceError } = await dbClient.from("assistant_voices").upsert(
         {
@@ -3776,7 +3914,7 @@ Deno.serve(async (req) => {
       }
 
       if (method === "GET" && path === "/voices/options") {
-        return json(VOICE_OPTIONS);
+        return json(await getAvailableVoiceOptions());
       }
 
       if (method === "GET" && path === "/avatars/options") {
