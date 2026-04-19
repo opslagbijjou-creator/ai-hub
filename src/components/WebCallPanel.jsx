@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Brain, Loader2, Mic, MicOff, PhoneCall, Send, Volume2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
+import { normalizeUiError } from '../lib/normalizeError';
 import './WebCallPanel.css';
 
 const STAGE_META = {
@@ -126,7 +127,7 @@ const WebCallPanel = ({
         await playAudioDataUrl(payload?.audioDataUrl || null, assistantText);
         setStage('idle');
       } catch (turnError) {
-        setError(turnError?.message || 'Onbekende fout tijdens web call test.');
+        setError(normalizeUiError(turnError, 'Onbekende fout tijdens web call test.'));
         setStage('idle');
       } finally {
         setBusy(false);

@@ -25,6 +25,7 @@ import DashboardTopbar from '../components/DashboardTopbar';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
+import { normalizeUiError } from '../lib/normalizeError';
 import CallStudio from './CallStudio';
 import AdminConsole from './AdminConsole';
 import './Dashboard.css';
@@ -124,6 +125,12 @@ const SetupHome = () => {
         throw new Error(statePayload?.error || 'Kon dashboardstatus niet laden.');
       }
 
+      const wizardCompleted = Boolean(statePayload?.wizard?.completed || statePayload?.assistant?.setup_completed);
+      if (!wizardCompleted) {
+        navigate('/setup-wizard', { replace: true });
+        return;
+      }
+
       setAssistantState(statePayload);
       setIsAdmin(Boolean(statePayload?.viewer?.isAdmin));
       setAssistantConfig({
@@ -147,11 +154,11 @@ const SetupHome = () => {
       }
     } catch (loadError) {
       setIsAdmin(false);
-      setError(loadError?.message || 'Kon dashboardstatus niet laden.');
+      setError(normalizeUiError(loadError, 'Kon dashboardstatus niet laden.'));
     } finally {
       setLoading(false);
     }
-  }, [authFetch, setAssistantConfig, setIsAdmin]);
+  }, [authFetch, navigate, setAssistantConfig, setIsAdmin]);
 
   useEffect(() => {
     loadData();
@@ -537,7 +544,7 @@ const Overview = () => {
       });
     } catch (loadError) {
       setIsAdmin(false);
-      setError(loadError?.message || 'Kon dashboardgegevens niet laden.');
+      setError(normalizeUiError(loadError, 'Kon dashboardgegevens niet laden.'));
     } finally {
       setLoading(false);
     }
@@ -570,7 +577,7 @@ const Overview = () => {
       setShowSettings(false);
       await loadData();
     } catch (saveError) {
-      setError(saveError?.message || 'Opslaan mislukt.');
+      setError(normalizeUiError(saveError, 'Opslaan mislukt.'));
     } finally {
       setSaveLoading(false);
     }
@@ -596,7 +603,7 @@ const Overview = () => {
       setInvoiceNotice(`Factuur ${payload?.invoice?.invoice_number || ''} staat op ${payload?.invoice?.status}.`);
       await loadData();
     } catch (invoiceError) {
-      setInvoiceNotice(invoiceError?.message || 'Kon factuur niet aanvragen.');
+      setInvoiceNotice(normalizeUiError(invoiceError, 'Kon factuur niet aanvragen.'));
     } finally {
       setInvoiceLoading(false);
     }
@@ -633,7 +640,7 @@ const Overview = () => {
       }));
       await loadData();
     } catch (connectError) {
-      setIntegrationNotice(connectError?.message || 'Kon webshop koppeling niet opslaan.');
+      setIntegrationNotice(normalizeUiError(connectError, 'Kon webshop koppeling niet opslaan.'));
     } finally {
       setIntegrationSaving(false);
     }
@@ -657,7 +664,7 @@ const Overview = () => {
       setIntegrationNotice(`${PROVIDER_LABELS[provider] || provider} is losgekoppeld.`);
       await loadData();
     } catch (disconnectError) {
-      setIntegrationNotice(disconnectError?.message || 'Kon koppeling niet loskoppelen.');
+      setIntegrationNotice(normalizeUiError(disconnectError, 'Kon koppeling niet loskoppelen.'));
     } finally {
       setIntegrationSaving(false);
     }

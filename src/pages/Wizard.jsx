@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/api';
+import { normalizeUiError } from '../lib/normalizeError';
 import { useAppContext } from '../context/AppContext';
 import { getPlanByKey } from '../lib/pricing';
 import WebCallPanel from '../components/WebCallPanel';
@@ -222,19 +223,35 @@ const Wizard = () => {
     setSaveError('');
 
     try {
-      const [voiceRes, avatarRes, numbersRes, statePayload] = await Promise.all([
-        fetch(apiUrl('/api/voices/options')),
-        fetch(apiUrl('/api/avatars/options')),
-        authFetch('/api/numbers/options'),
-        refreshState()
+      const loadPublicOptions = async (path, fallback) => {
+        try {
+          const response = await fetch(apiUrl(path));
+          if (!response.ok) return fallback;
+          const data = await response.json().catch(() => fallback);
+          return Array.isArray(data) && data.length ? data : fallback;
+        } catch {
+          return fallback;
+        }
+      };
+
+      const loadNumberOptions = async () => {
+        try {
+          const response = await authFetch('/api/numbers/options');
+          if (!response.ok) return FALLBACK_NUMBERS;
+          const data = await response.json().catch(() => FALLBACK_NUMBERS);
+          return Array.isArray(data) && data.length ? data : FALLBACK_NUMBERS;
+        } catch {
+          return FALLBACK_NUMBERS;
+        }
+      };
+
+      const [statePayload, voiceList, avatarList, numberData] = await Promise.all([
+        refreshState(),
+        loadPublicOptions('/api/voices/options', FALLBACK_VOICES),
+        loadPublicOptions('/api/avatars/options', FALLBACK_AVATARS),
+        loadNumberOptions()
       ]);
 
-      const voiceData = await voiceRes.json().catch(() => []);
-      const avatarData = await avatarRes.json().catch(() => []);
-      const numberData = await numbersRes.json().catch(() => []);
-
-      const voiceList = Array.isArray(voiceData) && voiceData.length ? voiceData : FALLBACK_VOICES;
-      const avatarList = Array.isArray(avatarData) && avatarData.length ? avatarData : FALLBACK_AVATARS;
       const selectedStateNumber = statePayload?.number?.e164
         ? {
             e164: statePayload.number.e164,
@@ -310,7 +327,7 @@ const Wizard = () => {
 
       setCurrentStep(Math.min(5, Math.max(1, Number(wizard?.step || 1))));
     } catch (error) {
-      setSaveError(error?.message || 'Kon setup data niet laden.');
+      setSaveError(normalizeUiError(error, 'Kon setup data niet laden.'));
     } finally {
       setLoading(false);
     }
@@ -418,6 +435,9 @@ const Wizard = () => {
         }
 
         setAssistantState(payload);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('belliq:onboarding-updated'));
+        }
         setAssistantConfig({
           companyName: payload?.profile?.company_name || form.companyName,
           voice: payload?.voice?.display_name || voices.find((voice) => voice.key === form.voiceKey)?.name || 'Niet gekozen',
@@ -430,7 +450,7 @@ const Wizard = () => {
 
         return payload;
       } catch (error) {
-        setSaveError(error?.message || 'Opslaan mislukt.');
+        setSaveError(normalizeUiError(error, 'Opslaan mislukt.'));
         return null;
       } finally {
         setSaving(false);
@@ -477,7 +497,7 @@ const Wizard = () => {
             : prev.smsTemplates
       }));
     } catch (error) {
-      setSaveError(error?.message || 'AI suggestie mislukt.');
+      setSaveError(normalizeUiError(error, 'AI suggestie mislukt.'));
     } finally {
       setAiSuggestLoading(false);
     }
@@ -599,7 +619,7 @@ const Wizard = () => {
       setTrialMessage('Proefperiode-aanvraag staat klaar. Je assistent blijft voorlopig in testmodus tot betaalgoedkeuring.');
       setAssistantState(payload);
     } catch (error) {
-      setTrialMessage(error?.message || 'Kon proefperiode niet starten.');
+      setTrialMessage(normalizeUiError(error, 'Kon proefperiode niet starten.'));
     } finally {
       setTrialLoading(false);
     }

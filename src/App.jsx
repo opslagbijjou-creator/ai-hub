@@ -148,12 +148,20 @@ function AppRoutes() {
       }
     };
 
-    if (!authLoading) {
-      checkOnboarding();
+    if (!authLoading) checkOnboarding();
+
+    const handleOnboardingUpdated = () => {
+      if (!authLoading) checkOnboarding();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('belliq:onboarding-updated', handleOnboardingUpdated);
     }
 
     return () => {
       cancelled = true;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('belliq:onboarding-updated', handleOnboardingUpdated);
+      }
     };
   }, [authLoading, setIsAdmin, user]);
 

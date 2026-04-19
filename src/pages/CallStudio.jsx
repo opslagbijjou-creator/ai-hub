@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Phone, ReceiptText, RefreshCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { apiConfigMessage, apiUrl, hasApiBaseConfig } from '../lib/api';
+import { normalizeUiError } from '../lib/normalizeError';
 import WebCallPanel from '../components/WebCallPanel';
 import { useAppContext } from '../context/AppContext';
 
@@ -38,7 +39,7 @@ const CallStudio = () => {
       setAssistantState(payload);
     } catch (loadError) {
       setIsAdmin(false);
-      setError(loadError?.message || 'Kon gegevens niet laden.');
+      setError(normalizeUiError(loadError, 'Kon gegevens niet laden.'));
     } finally {
       setLoading(false);
     }
@@ -76,7 +77,7 @@ const CallStudio = () => {
       );
       await loadState();
     } catch (requestError) {
-      setInvoiceMessage(requestError?.message || 'Kon geen factuur aanvragen.');
+      setInvoiceMessage(normalizeUiError(requestError, 'Kon geen factuur aanvragen.'));
     } finally {
       setInvoiceLoading(false);
     }
