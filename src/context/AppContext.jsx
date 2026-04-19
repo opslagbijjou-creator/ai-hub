@@ -117,7 +117,10 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    document.body.className = 'light-mode';
+    if (typeof document === 'undefined') return;
+
+    document.body.classList.remove('dark-mode');
+    document.body.classList.add('light-mode');
     localStorage.setItem('theme', 'light-mode');
   }, [theme]);
 

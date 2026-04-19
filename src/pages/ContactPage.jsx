@@ -14,9 +14,7 @@ const initialForm = {
 
 const ContactPage = () => {
   const [form, setForm] = useState(initialForm);
-  const [status, setStatus] = useState('');
   const [newsletterEmail, setNewsletterEmail] = useState('');
-  const [newsletterStatus, setNewsletterStatus] = useState('');
 
   const onChange = (key) => (event) => {
     setForm((prev) => ({
@@ -29,7 +27,6 @@ const ContactPage = () => {
     event.preventDefault();
 
     if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
-      setStatus('Vul naam, email en bericht in.');
       return;
     }
 
@@ -44,19 +41,16 @@ const ContactPage = () => {
     ].join('\n');
 
     window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    setStatus('Je mail-app is geopend.');
   };
 
   const handleNewsletter = () => {
     if (!newsletterEmail.trim()) {
-      setNewsletterStatus('Vul eerst een e-mailadres in.');
       return;
     }
 
     const subject = 'Nieuwsbrief aanmelding';
     const body = `Aanmelding nieuwsbrief vanaf website: ${newsletterEmail}`;
     window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    setNewsletterStatus('Je mail-app is geopend voor inschrijving.');
   };
 
   return (
@@ -130,8 +124,6 @@ const ContactPage = () => {
               <button className="w-full bg-gradient-to-r from-primary to-primary-container text-white py-5 rounded-lg font-bold text-lg hover:scale-[1.01] transition-all active:scale-[0.98] shadow-lg shadow-primary/20">
                 Verstuur Bericht
               </button>
-
-              {status ? <p className="text-sm text-on-surface-variant">{status}</p> : null}
             </form>
           </div>
 
@@ -236,7 +228,6 @@ const ContactPage = () => {
                 Inschrijven
               </button>
             </div>
-            {newsletterStatus ? <p className="text-white/90 text-sm mt-4 relative z-10">{newsletterStatus}</p> : null}
           </div>
         </section>
       </main>
