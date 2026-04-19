@@ -439,8 +439,18 @@ async function fetchDutchElevenLabsVoiceOptions() {
     const payload = await response.json();
     const voices = Array.isArray(payload?.voices) ? payload.voices : [];
 
-    return voices
+    const dutchVoices = voices
       .filter((voice) => voiceMatchesDutchProfile(voice))
+      .map((voice) => mapElevenLabsVoiceOption(voice))
+      .filter((voice) => Boolean(voice.externalVoiceId));
+
+    if (dutchVoices.length > 0) {
+      return dutchVoices;
+    }
+
+    // Some ElevenLabs accounts do not expose language metadata reliably.
+    // If that happens, still return account voices so users can pick/test immediately.
+    return voices
       .map((voice) => mapElevenLabsVoiceOption(voice))
       .filter((voice) => Boolean(voice.externalVoiceId));
   } catch (error) {
@@ -458,12 +468,15 @@ async function getAvailableVoiceOptions() {
   }
 
   const remoteVoices = await fetchDutchElevenLabsVoiceOptions();
-  const resolvedVoices = remoteVoices.length ? mergeVoiceOptions(remoteVoices, VOICE_OPTIONS) : VOICE_OPTIONS;
+  if (remoteVoices.length > 0) {
+    const resolvedVoices = mergeVoiceOptions(remoteVoices, VOICE_OPTIONS);
+    cachedDutchVoiceOptions = resolvedVoices;
+    cachedDutchVoiceOptionsAt = Date.now();
+    return resolvedVoices;
+  }
 
-  cachedDutchVoiceOptions = resolvedVoices;
-  cachedDutchVoiceOptionsAt = Date.now();
-
-  return resolvedVoices;
+  // Do not cache a failed fallback response, so next request retries ElevenLabs.
+  return VOICE_OPTIONS;
 }
 
 async function resolveVoiceOptionByKey(voiceKey) {

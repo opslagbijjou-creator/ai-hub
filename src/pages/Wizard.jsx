@@ -22,7 +22,7 @@ const STEP_LABELS = [
   'Website',
   'Stem',
   'Instructies',
-  'Bereikbaarheid'
+  'Nummer & bereikbaarheid'
 ];
 
 const FALLBACK_AVATARS = [
@@ -58,6 +58,12 @@ const FALLBACK_VOICES = [
     previewUrl:
       'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/5f713f17-8f41-4f5b-a0f2-ea0b2f9be8f5.mp3'
   }
+];
+
+const FALLBACK_NUMBERS = [
+  { e164: '+31208081234', label: 'Amsterdam, NL', countryCode: 'NL', source: 'catalog' },
+  { e164: '+31103456789', label: 'Rotterdam, NL', countryCode: 'NL', source: 'catalog' },
+  { e164: '+31859990000', label: 'Nationaal, NL', countryCode: 'NL', source: 'catalog' }
 ];
 
 const DEFAULT_SCHEDULE = {
@@ -135,6 +141,7 @@ const Wizard = () => {
   const [trialMessage, setTrialMessage] = useState('');
   const [voices, setVoices] = useState(FALLBACK_VOICES);
   const [avatars, setAvatars] = useState(FALLBACK_AVATARS);
+  const [numberOptions, setNumberOptions] = useState(FALLBACK_NUMBERS);
   const [assistantState, setAssistantState] = useState(null);
   const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
 
@@ -215,19 +222,44 @@ const Wizard = () => {
     setSaveError('');
 
     try {
-      const [voiceRes, avatarRes, statePayload] = await Promise.all([
+      const [voiceRes, avatarRes, numbersRes, statePayload] = await Promise.all([
         fetch(apiUrl('/api/voices/options')),
         fetch(apiUrl('/api/avatars/options')),
+        authFetch('/api/numbers/options'),
         refreshState()
       ]);
 
       const voiceData = await voiceRes.json().catch(() => []);
       const avatarData = await avatarRes.json().catch(() => []);
+      const numberData = await numbersRes.json().catch(() => []);
 
       const voiceList = Array.isArray(voiceData) && voiceData.length ? voiceData : FALLBACK_VOICES;
       const avatarList = Array.isArray(avatarData) && avatarData.length ? avatarData : FALLBACK_AVATARS;
+      const selectedStateNumber = statePayload?.number?.e164
+        ? {
+            e164: statePayload.number.e164,
+            label: statePayload?.number?.display_label || statePayload.number.e164,
+            countryCode: statePayload?.number?.country_code || 'NL',
+            source: statePayload?.number?.source || 'wizard'
+          }
+        : null;
+      const normalizedNumbers = [...(Array.isArray(numberData) ? numberData : []), ...(selectedStateNumber ? [selectedStateNumber] : [])]
+        .filter((option) => option?.e164)
+        .reduce((acc, option) => {
+          if (!acc.find((entry) => entry.e164 === option.e164)) {
+            acc.push({
+              e164: option.e164,
+              label: option.label || option.display_label || option.e164,
+              countryCode: option.countryCode || option.country_code || 'NL',
+              source: option.source || 'catalog'
+            });
+          }
+          return acc;
+        }, []);
+
       setVoices(voiceList);
       setAvatars(avatarList);
+      setNumberOptions(normalizedNumbers.length ? normalizedNumbers : FALLBACK_NUMBERS);
 
       const profile = statePayload?.profile || {};
       const channels = statePayload?.channels || {};
@@ -282,7 +314,7 @@ const Wizard = () => {
     } finally {
       setLoading(false);
     }
-  }, [refreshState]);
+  }, [authFetch, refreshState]);
 
   useEffect(() => {
     loadInitialData();
@@ -291,6 +323,10 @@ const Wizard = () => {
   const selectedAvatar = useMemo(() => {
     return avatars.find((avatar) => avatar.key === form.avatarKey) || avatars[0];
   }, [avatars, form.avatarKey]);
+
+  const selectedNumberOption = useMemo(() => {
+    return numberOptions.find((option) => option.e164 === form.numberE164) || null;
+  }, [form.numberE164, numberOptions]);
 
   const selectedPlan = getPlanByKey(form.planKey);
 
@@ -304,7 +340,7 @@ const Wizard = () => {
       2: Boolean(form.websiteUrl.trim() && form.primaryGoal.trim()),
       3: Boolean(form.voiceKey),
       4: Boolean(form.roleDescription.trim() && form.handoffRules.trim() && hasAtLeastOneFaq(form.faqItems)),
-      5: Boolean(form.availabilityMode === 'always' || hasSchedule)
+      5: Boolean(form.numberE164 && (form.availabilityMode === 'always' || hasSchedule))
     };
   }, [form]);
 
@@ -314,7 +350,7 @@ const Wizard = () => {
       { key: 'website', label: 'Website', done: validationByStep[2] },
       { key: 'stem', label: 'Stem', done: validationByStep[3] },
       { key: 'instructies', label: 'Instructies', done: validationByStep[4] },
-      { key: 'bereikbaarheid', label: 'Bereikbaarheid', done: validationByStep[5] }
+      { key: 'bereikbaarheid', label: 'Nummer & bereikbaarheid', done: validationByStep[5] }
     ];
   }, [validationByStep]);
 
@@ -343,10 +379,11 @@ const Wizard = () => {
       availabilityMode: form.availabilityMode,
       availabilitySchedule: form.availabilitySchedule,
       numberE164: form.numberE164,
+      numberLabel: selectedNumberOption?.label || form.numberE164,
       planKey: form.planKey,
       ...overrides
     }),
-    [form]
+    [form, selectedNumberOption]
   );
 
   const saveStep = useCallback(
@@ -604,6 +641,11 @@ const Wizard = () => {
           <img src={selectedAvatar?.imageUrl} alt={selectedAvatar?.label} className="assistant-avatar-large" />
           <h2>{form.assistantName} is klaar</h2>
           <p>Test direct het gesprek in de browser en activeer daarna je live flow.</p>
+
+          <div className="wizard-ready-meta">
+            <span>Stem: {voices.find((voice) => voice.key === form.voiceKey)?.name || 'Nog niet gekozen'}</span>
+            <span>Nummer: {selectedNumberOption?.label || form.numberE164 || 'Nog niet gekozen'}</span>
+          </div>
 
           <div className="wizard-ready-panel">
             <WebCallPanel
@@ -942,11 +984,11 @@ const Wizard = () => {
         <div className="step-title-row">
           <span className="step-index">{currentStep}</span>
           <div>
-            <h2>{currentStep === 4 ? 'Instructies instellen' : 'Bereikbaarheid instellen'}</h2>
+            <h2>{currentStep === 4 ? 'Instructies instellen' : 'Nummer en bereikbaarheid instellen'}</h2>
             <p>
               {currentStep === 4
                 ? 'Bepaal hoe je assistent reageert en wat hij moet doorsturen.'
-                : 'Bepaal wanneer je assistent gesprekken aanneemt.'}
+                : 'Kies eerst je voorkeursnummer en bepaal daarna wanneer je assistent gesprekken aanneemt.'}
             </p>
           </div>
         </div>
@@ -1026,6 +1068,24 @@ const Wizard = () => {
           </>
         ) : (
           <>
+            <div className="wizard-field">
+              <span>Kies je voorkeursnummer</span>
+              <div className="number-choice-grid">
+                {numberOptions.map((option) => (
+                  <button
+                    key={option.e164}
+                    type="button"
+                    className={`number-choice ${form.numberE164 === option.e164 ? 'active' : ''}`}
+                    onClick={() => setForm((prev) => ({ ...prev, numberE164: option.e164 }))}
+                  >
+                    <strong>{option.label || option.e164}</strong>
+                    <span>{option.e164}</span>
+                    <small>{option.source === 'twilio' ? 'Beschikbaar in je nummerpool' : 'Beschikbaar voor provisioning'}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="availability-choice-grid">
               <button
                 type="button"
@@ -1075,6 +1135,14 @@ const Wizard = () => {
                 ))}
               </div>
             )}
+
+            <div className="wizard-plan-card wizard-security-card">
+              <strong>Veilig en duidelijk in gebruik</strong>
+              <p>
+                Laat bellers weten dat ze met een AI-assistent praten, gebruik alleen noodzakelijke gegevens en stuur
+                gevoelige of onduidelijke gevallen door naar een collega.
+              </p>
+            </div>
 
             <div className="wizard-plan-card">
               <strong>Gekozen pakket: {selectedPlan.name}</strong>

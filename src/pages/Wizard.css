@@ -194,6 +194,23 @@
   padding: 0.62rem 0.82rem;
 }
 
+.wizard-ready-meta {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.wizard-ready-meta span {
+  padding: 0.42rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #d9e4f4;
+  background: #f8fbff;
+  color: #44607f;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .wizard-step-body {
   display: flex;
   flex-direction: column;
@@ -499,6 +516,44 @@
   gap: 0.62rem;
 }
 
+.number-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.62rem;
+}
+
+.number-choice {
+  width: 100%;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px solid #d3dfef;
+  background: #ffffff;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.number-choice strong {
+  color: #182942;
+}
+
+.number-choice span {
+  color: #48627f;
+  font-size: 0.88rem;
+}
+
+.number-choice small {
+  color: #708099;
+  font-size: 0.76rem;
+}
+
+.number-choice.active {
+  border-color: #2f6fed;
+  background: #edf4ff;
+  box-shadow: 0 0 0 2px rgba(47, 111, 237, 0.12);
+}
+
 .availability-card {
   width: 100%;
   padding: 0.85rem;
@@ -544,6 +599,10 @@
   border-radius: 12px;
   background: #f5f9ff;
   padding: 0.78rem;
+}
+
+.wizard-security-card {
+  background: #f8fbff;
 }
 
 .wizard-plan-card strong {

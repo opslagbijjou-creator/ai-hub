@@ -1,3 +1,5 @@
+/// <reference path="../edge-runtime.d.ts" />
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 import OpenAI from "npm:openai@4";
 
@@ -317,8 +319,16 @@ function mapElevenLabsVoiceOption(voice: Record<string, any>) {
   };
 }
 
-async function fetchDutchElevenLabsVoiceOptions() {
-  if (!ELEVENLABS_API_KEY) return [];
+async function fetchDutchElevenLabsVoiceOptionsWithMeta() {
+  if (!ELEVENLABS_API_KEY) {
+    return {
+      voices: [] as Array<Record<string, any>>,
+      source: "fallback",
+      reason: "missing_elevenlabs_api_key",
+      apiVoiceCount: 0,
+      dutchVoiceCount: 0,
+    };
+  }
 
   try {
     const response = await fetch("https://api.elevenlabs.io/v1/voices", {
@@ -330,38 +340,106 @@ async function fetchDutchElevenLabsVoiceOptions() {
     if (!response.ok) {
       const reason = await response.text();
       console.warn("ElevenLabs voices waarschuwing:", reason.slice(0, 240));
-      return [];
+      return {
+        voices: [] as Array<Record<string, any>>,
+        source: "fallback",
+        reason: `elevenlabs_http_${response.status}:${reason.slice(0, 240)}`,
+        apiVoiceCount: 0,
+        dutchVoiceCount: 0,
+      };
     }
 
     const payload = await response.json();
     const voices = Array.isArray(payload?.voices) ? payload.voices : [];
+    const mappedAllVoices = voices
+      .map((voice: Record<string, any>) => mapElevenLabsVoiceOption(voice))
+      .filter((voice: Record<string, any>) => Boolean(voice.externalVoiceId));
 
-    return voices
+    const dutchVoices = voices
       .filter((voice: Record<string, any>) => voiceMatchesDutchProfile(voice))
       .map((voice: Record<string, any>) => mapElevenLabsVoiceOption(voice))
       .filter((voice: Record<string, any>) => Boolean(voice.externalVoiceId));
+
+    if (dutchVoices.length > 0) {
+      return {
+        voices: dutchVoices,
+        source: "elevenlabs_dutch",
+        reason: null,
+        apiVoiceCount: voices.length,
+        dutchVoiceCount: dutchVoices.length,
+      };
+    }
+
+    // Some ElevenLabs accounts do not expose language metadata reliably.
+    // If that happens, still return account voices so users can pick/test immediately.
+    if (mappedAllVoices.length > 0) {
+      return {
+        voices: mappedAllVoices,
+        source: "elevenlabs_all",
+        reason: "no_dutch_metadata_match",
+        apiVoiceCount: voices.length,
+        dutchVoiceCount: 0,
+      };
+    }
+
+    return {
+      voices: [] as Array<Record<string, any>>,
+      source: "fallback",
+      reason: "no_voices_from_elevenlabs",
+      apiVoiceCount: voices.length,
+      dutchVoiceCount: 0,
+    };
   } catch (error) {
     console.warn("ElevenLabs voices fout:", (error as any)?.message || error);
-    return [];
+    return {
+      voices: [] as Array<Record<string, any>>,
+      source: "fallback",
+      reason: `elevenlabs_fetch_error:${safeText((error as any)?.message || error)}`,
+      apiVoiceCount: 0,
+      dutchVoiceCount: 0,
+    };
   }
 }
 
-async function getAvailableVoiceOptions() {
+async function getAvailableVoiceOptionsWithMeta() {
   const cacheIsFresh =
     cachedDutchVoiceOptions.length > 0 &&
     (Date.now() - cachedDutchVoiceOptionsAt) < VOICE_OPTIONS_CACHE_TTL_MS;
 
   if (cacheIsFresh) {
-    return cachedDutchVoiceOptions;
+    return {
+      voices: cachedDutchVoiceOptions,
+      source: "cache",
+      reason: null,
+      apiVoiceCount: cachedDutchVoiceOptions.length,
+      dutchVoiceCount: null,
+    };
   }
 
-  const remoteVoices = await fetchDutchElevenLabsVoiceOptions();
-  const resolvedVoices = remoteVoices.length ? mergeVoiceOptions(remoteVoices, VOICE_OPTIONS) : VOICE_OPTIONS;
+  const remoteResult = await fetchDutchElevenLabsVoiceOptionsWithMeta();
+  if (remoteResult.voices.length > 0) {
+    const resolvedVoices = mergeVoiceOptions(remoteResult.voices, VOICE_OPTIONS);
+    cachedDutchVoiceOptions = resolvedVoices;
+    cachedDutchVoiceOptionsAt = Date.now();
+    return {
+      ...remoteResult,
+      voices: resolvedVoices,
+    };
+  }
 
-  cachedDutchVoiceOptions = resolvedVoices;
-  cachedDutchVoiceOptionsAt = Date.now();
+  // Do not cache a failed fallback response, so next request retries ElevenLabs.
+  return {
+    voices: VOICE_OPTIONS,
+    source: "fallback",
+    reason: remoteResult.reason,
+    apiVoiceCount: remoteResult.apiVoiceCount,
+    dutchVoiceCount: remoteResult.dutchVoiceCount,
+  };
+}
 
-  return resolvedVoices;
+async function getAvailableVoiceOptions() {
+  const result = await getAvailableVoiceOptionsWithMeta();
+  return result.voices;
 }
 
 async function resolveVoiceOptionByKey(voiceKey: string) {
@@ -1027,11 +1105,15 @@ function buildAssistantPrompt(
     `FAQ context: ${faqPreview}`,
     "Regels:",
     "- Geef korte, natuurlijke antwoorden.",
+    "- Stel jezelf aan het begin voor als digitale of AI-assistent van het bedrijf.",
     "- Stel 1 vervolgvraag als informatie ontbreekt.",
     "- Bevestig belangrijke details hardop (naam, datum, tijd).",
     "- Gebruik eerst de website-, kennis- en FAQ-context als waarheid. Verzin geen details die niet in de context staan.",
+    "- Vraag alleen gegevens die nodig zijn om de klantvraag af te handelen.",
+    "- Vraag nooit om volledige betaalkaartgegevens, burgerservicenummers of andere onnodig gevoelige data.",
     "- Bij vragen over orderstatus: leg uit dat secure webshop lookup tijdelijk via het supportteam loopt en noteer een terugbelverzoek als nodig.",
     "- Als iets onbekend is, zeg dat eerlijk en bied een terugbelnotitie aan.",
+    "- Bij twijfel over privacy, juridische zaken, medische zaken of spoed: zet door naar een medewerker.",
     "- Spreek standaard Nederlands, tenzij de beller duidelijk een andere taal gebruikt.",
   ].join("\n");
 }
@@ -1133,10 +1215,11 @@ function buildWizardChecklist(params: {
   assistant: Record<string, any>;
   profile: Record<string, any> | null;
   voice: Record<string, any> | null;
+  number: Record<string, any> | null;
   faqs: Array<Record<string, any>>;
   channelSettings: Record<string, any> | null;
 }) {
-  const { assistant, profile, voice, faqs, channelSettings } = params;
+  const { assistant, profile, voice, number, faqs, channelSettings } = params;
 
   const identityDone = Boolean(assistant?.display_name && assistant?.avatar_key);
   const websiteDone = Boolean(safeText(profile?.website_url) && safeText(profile?.goals || profile?.primary_goal));
@@ -1163,6 +1246,8 @@ function buildWizardChecklist(params: {
     channelSettings?.availability_mode === "always" ||
       (channelSettings?.availability_mode === "custom_hours" && hasActiveSchedule),
   );
+  const numberDone = Boolean(safeText(number?.e164));
+  const reachabilityDone = Boolean(numberDone && availabilityDone);
 
   const checklist = [
     {
@@ -1197,11 +1282,13 @@ function buildWizardChecklist(params: {
     },
     {
       key: "bereikbaarheid",
-      label: "Bereikbaarheid",
-      done: availabilityDone,
-      description: availabilityDone
-        ? "Beschikbaarheid staat goed."
-        : "Kies beschikbaarheid en tijden.",
+      label: "Nummer & bereikbaarheid",
+      done: reachabilityDone,
+      description: reachabilityDone
+        ? "Nummer en bereikbaarheid staan goed."
+        : numberDone
+          ? "Kies beschikbaarheid en tijden."
+          : "Kies eerst een nummer en daarna bereikbaarheid.",
     },
   ];
 
@@ -2167,22 +2254,32 @@ async function handleAdminOverview(req: Request) {
     ].find(Boolean);
     if (relationError) throw relationError;
 
-    const profileMap = new Map(
-      (profilesResult.data || []).map((entry: Record<string, any>) => [entry.assistant_id, entry]),
+    const profileRows = (profilesResult.data || []) as Record<string, any>[];
+    const numberRows = (numbersResult.data || []) as Record<string, any>[];
+    const voiceRows = (voicesResult.data || []) as Record<string, any>[];
+    const invoiceRows = (invoicesResult.data || []) as Record<string, any>[];
+    const provisioningRows = (provisioningResult.data || []) as Record<string, any>[];
+    const subscriptionRows = (subscriptionsResult.data || []) as Record<string, any>[];
+    const integrationRows = (integrationsResult.data || []) as Record<string, any>[];
+    const billingAccountRows = (billingAccountsResult.data || []) as Record<string, any>[];
+    const usageRows = (usageResult.data || []) as Record<string, any>[];
+
+    const profileMap = new Map<string, Record<string, any>>(
+      profileRows.map((entry: Record<string, any>) => [entry.assistant_id, entry]),
     );
-    const selectedNumberMap = pickLatestBy(numbersResult.data || [], "assistant_id", "updated_at");
-    const selectedVoiceMap = pickLatestBy(voicesResult.data || [], "assistant_id", "updated_at");
-    const latestInvoiceMap = pickLatestBy(invoicesResult.data || [], "assistant_id", "created_at");
-    const latestProvisioningMap = pickLatestBy(provisioningResult.data || [], "assistant_id", "created_at");
-    const subscriptionMap = new Map(
-      (subscriptionsResult.data || []).map((entry: Record<string, any>) => [entry.assistant_id, entry]),
+    const selectedNumberMap = pickLatestBy<Record<string, any>>(numberRows, "assistant_id", "updated_at");
+    const selectedVoiceMap = pickLatestBy<Record<string, any>>(voiceRows, "assistant_id", "updated_at");
+    const latestInvoiceMap = pickLatestBy<Record<string, any>>(invoiceRows, "assistant_id", "created_at");
+    const latestProvisioningMap = pickLatestBy<Record<string, any>>(provisioningRows, "assistant_id", "created_at");
+    const subscriptionMap = new Map<string, Record<string, any>>(
+      subscriptionRows.map((entry: Record<string, any>) => [entry.assistant_id, entry]),
     );
-    const billingAccountMap = new Map(
-      (billingAccountsResult.data || []).map((entry: Record<string, any>) => [entry.user_id, entry]),
+    const billingAccountMap = new Map<string, Record<string, any>>(
+      billingAccountRows.map((entry: Record<string, any>) => [entry.user_id, entry]),
     );
 
     const integrationsByAssistant = new Map<string, Record<string, any>[]>();
-    for (const integration of integrationsResult.data || []) {
+    for (const integration of integrationRows) {
       const key = safeText(integration.assistant_id);
       if (!key) continue;
       if (!integrationsByAssistant.has(key)) integrationsByAssistant.set(key, []);
@@ -2190,7 +2287,7 @@ async function handleAdminOverview(req: Request) {
     }
 
     const usageByAssistant = new Map<string, { minutesUsed: number; tasksUsed: number }>();
-    for (const row of usageResult.data || []) {
+    for (const row of usageRows) {
       const key = safeText(row.assistant_id);
       if (!key) continue;
       const current = usageByAssistant.get(key) || { minutesUsed: 0, tasksUsed: 0 };
@@ -2212,7 +2309,9 @@ async function handleAdminOverview(req: Request) {
       const latestProvisioningJob = latestProvisioningMap.get(assistant.id) || null;
       const subscription = subscriptionMap.get(assistant.id) || null;
       const billingAccount = billingAccountMap.get(assistant.user_id) || null;
-      const integrations = (integrationsByAssistant.get(assistant.id) || []).map((entry) => sanitizeIntegration(entry));
+      const integrations = (integrationsByAssistant.get(assistant.id) || []).map((entry: Record<string, any>) =>
+        sanitizeIntegration(entry)
+      );
       const connectedProviders = integrations
         .filter((entry: Record<string, any>) => entry.status === "connected")
         .map((entry: Record<string, any>) => entry.provider);
@@ -2426,6 +2525,7 @@ async function composeAssistantState(dbClient: any, userId: string) {
     assistant,
     profile,
     voice,
+    number,
     faqs: faqItems,
     channelSettings,
   });
@@ -2666,6 +2766,7 @@ async function handleOnboardingSave(
       assistant: assistantDraft,
       profile,
       voice: selectedVoice,
+      number: selectedNumber,
       faqs: faqItems,
       channelSettings,
     });
@@ -3896,7 +3997,7 @@ async function handleTwilioStatus(req: Request) {
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   try {
     const response = await (async () => {
       if (req.method === "OPTIONS") {
@@ -3915,6 +4016,16 @@ Deno.serve(async (req) => {
 
       if (method === "GET" && path === "/voices/options") {
         return json(await getAvailableVoiceOptions());
+      }
+
+      if (method === "GET" && path === "/voices/options-debug") {
+        const result = await getAvailableVoiceOptionsWithMeta();
+        return json({
+          ...result,
+          count: result.voices.length,
+          names: result.voices.slice(0, 25).map((voice) => voice?.name).filter(Boolean),
+          hasElevenLabsKey: Boolean(ELEVENLABS_API_KEY),
+        });
       }
 
       if (method === "GET" && path === "/avatars/options") {

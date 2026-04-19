@@ -82,30 +82,266 @@ const DetailRow = ({ label, value }) => (
 
 const SetupHome = () => {
   const navigate = useNavigate();
-  const { assistantConfig } = useAppContext();
+  const { assistantConfig, setAssistantConfig, setIsAdmin } = useAppContext();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [assistantState, setAssistantState] = useState(null);
+  const [usageSummary, setUsageSummary] = useState(null);
+
+  const authFetch = useCallback(async (path, options = {}) => {
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error('Geen actieve sessie.');
+    }
+
+    const headers = {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${session.access_token}`
+    };
+
+    if (options.body && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    return fetch(apiUrl(path), {
+      ...options,
+      headers
+    });
+  }, []);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const stateRes = await authFetch('/api/assistant/state');
+      const statePayload = await stateRes.json().catch(() => ({}));
+
+      if (!stateRes.ok) {
+        throw new Error(statePayload?.error || 'Kon dashboardstatus niet laden.');
+      }
+
+      setAssistantState(statePayload);
+      setIsAdmin(Boolean(statePayload?.viewer?.isAdmin));
+      setAssistantConfig({
+        companyName: statePayload?.profile?.company_name || statePayload?.assistant?.display_name || 'Mijn Bedrijf',
+        voice: statePayload?.voice?.display_name || 'Niet gekozen',
+        voiceKey: statePayload?.voice?.voice_key || null,
+        phoneNumber: statePayload?.number?.e164 || 'Nog niet gekozen',
+        assistantId: statePayload?.assistant?.id,
+        liveStatus: statePayload?.assistant?.live_status,
+        billingStatus: statePayload?.assistant?.billing_status
+      });
+
+      try {
+        const usageRes = await authFetch('/api/usage/summary');
+        const usagePayload = await usageRes.json().catch(() => ({}));
+        if (usageRes.ok) {
+          setUsageSummary(usagePayload);
+        }
+      } catch {
+        setUsageSummary(null);
+      }
+    } catch (loadError) {
+      setIsAdmin(false);
+      setError(loadError?.message || 'Kon dashboardstatus niet laden.');
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, setAssistantConfig, setIsAdmin]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const assistantName =
+    assistantState?.identity?.name || assistantState?.assistant?.display_name || assistantConfig?.companyName || 'Jouw assistent';
+  const assistantAvatar = assistantState?.identity?.avatar?.imageUrl || null;
+  const voiceLabel = assistantState?.voice?.display_name || assistantConfig?.voice || 'Nog niet gekozen';
+  const numberLabel =
+    assistantState?.number?.display_label || assistantState?.number?.e164 || assistantConfig?.phoneNumber || 'Nog niet gekozen';
+  const websiteLabel = assistantState?.profile?.website_url || 'Nog niet ingevuld';
+  const liveStatus = assistantState?.assistant?.live_status || assistantConfig?.liveStatus || 'not_live';
+  const billingStatus = assistantState?.assistant?.billing_status || assistantConfig?.billingStatus || 'none';
+  const wizardChecklist = Array.isArray(assistantState?.wizard?.checklist) ? assistantState.wizard.checklist : [];
+  const wizardDoneCount =
+    Number(assistantState?.wizard?.completedCount) || wizardChecklist.filter((entry) => entry.done).length;
+  const usage = usageSummary?.usage || null;
+  const isConfigured = Boolean(assistantState?.wizard?.completed);
+  const isLive = liveStatus === 'live';
+
+  const liveLabelMap = {
+    live: 'Live',
+    provisioning: 'Provisioning',
+    not_live: 'Nog niet live',
+    needs_number_reselect: 'Nummer opnieuw kiezen'
+  };
+
+  const billingLabelMap = {
+    none: 'Nog niet gestart',
+    invoice_sent: 'Factuur verstuurd',
+    paid_approved: 'Betaald en klaar',
+    active: 'Actief',
+    past_due: 'Actie nodig'
+  };
+
+  const nextAction = !isConfigured
+    ? {
+        title: 'Rond eerst je setup af',
+        description: 'Je assistent moet eerst een naam, website, stem, instructies en nummer hebben.',
+        cta: 'Ga naar setup wizard',
+        onClick: () => navigate('/setup-wizard')
+      }
+    : !isLive
+      ? {
+          title: 'Test en zet daarna live',
+          description: 'Je basis staat. Test nu nog een gesprek in de studio en regel daarna livegang of activatie.',
+          cta: 'Open Call Studio',
+          onClick: () => navigate('/dashboard/call-studio')
+        }
+      : {
+          title: 'Je assistent staat live',
+          description: 'Blijf gesprekken testen en finetunen terwijl je assistent al meedraait.',
+          cta: 'Open Call Studio',
+          onClick: () => navigate('/dashboard/call-studio')
+        };
+
+  if (loading) {
+    return (
+      <div className="dashboard-overview dashboard-shell animate-fade-in">
+        <div className="glass-panel" style={{ padding: '1rem', borderRadius: '18px' }}>
+          Dashboard laden...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-overview dashboard-shell animate-fade-in">
-      <div className="dashboard-header">
+      <div className="dashboard-header dashboard-header-tight">
         <span className="dashboard-eyebrow">Dashboard</span>
-        <h1 className="font-heading">{assistantConfig?.companyName || 'Jouw AI assistent'}</h1>
-        <p className="text-muted">
-          Simpel overzicht: rond eerst je setup af, test daarna je assistent en ga dan live.
-        </p>
+        <h1 className="font-heading">{assistantName}</h1>
+        <p className="text-muted">Eerst duidelijkheid, dan pas livegang. Hier zie je alleen wat nu echt belangrijk is.</p>
       </div>
 
-      <section className="glass-panel" style={{ padding: '1rem', borderRadius: '16px', marginBottom: '0.9rem' }}>
-        <h3 style={{ marginBottom: '0.35rem' }}>Wat je nu moet doen</h3>
-        <p className="text-muted" style={{ marginBottom: '0.9rem' }}>
-          De setup wizard is leidend. Als die nog niet klaar is, blijf je automatisch in die flow.
-        </p>
-        <div className="assistant-actions">
-          <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
-            Ga verder met setup
-          </button>
-          <button className="btn-secondary" onClick={() => navigate('/dashboard/call-studio')}>
-            Open Call Studio
-          </button>
+      {error && (
+        <div className="glass-panel setup-feedback setup-feedback-error">
+          <strong>Dashboard kon niet volledig laden.</strong>
+          <p className="text-muted" style={{ marginTop: '0.35rem' }}>{error}</p>
+        </div>
+      )}
+
+      <section className="glass-panel dashboard-setup-strip">
+        <div className="dashboard-setup-strip-main">
+          <div className="dashboard-identity-pill">
+            {assistantAvatar ? (
+              <img src={assistantAvatar} alt={assistantName} className="dashboard-avatar" />
+            ) : (
+              <div className="dashboard-avatar fallback">{assistantName?.slice(0, 1) || 'A'}</div>
+            )}
+            <div>
+              <strong>{assistantName}</strong>
+              <small>
+                {wizardDoneCount} / {wizardChecklist.length || 5} setupstappen klaar
+              </small>
+            </div>
+          </div>
+
+          <div className="setup-strip-meta">
+            <div>
+              <span>Stem</span>
+              <strong>{voiceLabel}</strong>
+            </div>
+            <div>
+              <span>Nummer</span>
+              <strong>{numberLabel}</strong>
+            </div>
+            <div>
+              <span>Live status</span>
+              <strong>{liveLabelMap[liveStatus] || liveStatus}</strong>
+            </div>
+            <div>
+              <span>Billing</span>
+              <strong>{billingLabelMap[billingStatus] || billingStatus}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-setup-strip-steps">
+          {(wizardChecklist.length ? wizardChecklist : [
+            { key: 'identiteit', label: 'Identiteit', done: false },
+            { key: 'website', label: 'Website', done: false },
+            { key: 'stem', label: 'Stem', done: false },
+            { key: 'instructies', label: 'Instructies', done: false },
+            { key: 'bereikbaarheid', label: 'Nummer & bereikbaarheid', done: false }
+          ]).map((step, index) => (
+            <div key={step.key || step.label} className={`setup-strip-step ${step.done ? 'done' : ''}`}>
+              <span>{step.done ? <CheckCircle2 size={12} /> : index + 1}</span>
+              <p>{step.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="setup-hero-card glass-panel">
+        <div className="setup-hero-main">
+          <span className="dashboard-eyebrow">{isLive ? 'Live' : 'Volgende stap'}</span>
+          <h2>{nextAction.title}</h2>
+          <p className="text-muted">{nextAction.description}</p>
+
+          <div className="assistant-actions">
+            <button className="btn-primary" onClick={nextAction.onClick}>
+              {nextAction.cta}
+            </button>
+            <button className="btn-secondary" onClick={() => navigate('/setup-wizard')}>
+              Setup openen
+            </button>
+          </div>
+        </div>
+
+        <div className="setup-hero-aside">
+          <StatusPill label="Website" value={websiteLabel === 'Nog niet ingevuld' ? websiteLabel : 'Gekoppeld'} />
+          <StatusPill label="Minutes" value={usage ? `${usage.minutesUsed}/${usage.includedMinutes}` : '-'} />
+          <StatusPill label="Taken" value={usage ? `${usage.tasksUsed}/${usage.includedTasks}` : '-'} />
+        </div>
+      </section>
+
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.9rem' }}>
+        <div className="glass-panel" style={{ padding: '1rem', borderRadius: '18px' }}>
+          <h3 style={{ marginBottom: '0.75rem' }}>Belangrijkste details</h3>
+          <div style={{ display: 'grid', gap: '0.55rem' }}>
+            <DetailRow label="Bedrijf" value={assistantState?.profile?.company_name || assistantName} />
+            <DetailRow label="Website" value={websiteLabel} />
+            <DetailRow label="Welkomstzin" value={assistantState?.profile?.greeting || 'Nog niet ingesteld'} />
+            <DetailRow label="Praatstijl" value={assistantState?.profile?.tone_of_voice || 'Nog niet ingesteld'} />
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1rem', borderRadius: '18px' }}>
+          <h3 style={{ marginBottom: '0.75rem' }}>Veilig gebruik</h3>
+          <div style={{ display: 'grid', gap: '0.65rem' }}>
+            <SetupStepCard
+              title="Vertel dat het AI is"
+              description="Laat bellers weten dat ze met een digitale assistent spreken."
+              done={Boolean(assistantState?.profile?.greeting)}
+              tone="soft"
+            />
+            <SetupStepCard
+              title="Vraag alleen wat nodig is"
+              description="Naam, telefoonnummer en hulpvraag zijn meestal genoeg voor opvolging."
+              done={Boolean(assistantState?.profile?.role_description && assistantState?.profile?.handoff_rules)}
+              tone="warm"
+            />
+            <SetupStepCard
+              title="Stuur gevoelige zaken door"
+              description="Gebruik handoff bij klachten, spoed, privacyvragen of onduidelijke situaties."
+              done={Boolean(assistantState?.profile?.handoff_rules)}
+              tone="default"
+            />
+          </div>
         </div>
       </section>
     </div>
