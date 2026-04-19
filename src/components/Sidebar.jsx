@@ -26,7 +26,7 @@ const Sidebar = () => {
 
       <div className="sidebar-nav">
         <div className="nav-section">
-          <p className="nav-label">Main</p>
+          <p className="nav-label">Algemeen</p>
           <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
             <LayoutDashboard size={20} />
             <span>Overzicht</span>
