@@ -3,8 +3,8 @@ import { hasSupabaseConfig, resolvedSupabaseUrl, supabaseConfigMessage } from '.
 const rawApiBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/$/, '');
 const rawSupabaseUrl = (resolvedSupabaseUrl || '').trim().replace(/\/$/, '');
 
-const isLocalhost = typeof window !== 'undefined'
-  && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const browserHost = typeof window !== 'undefined' ? window.location.hostname : '';
+const isLocalhost = browserHost === 'localhost' || browserHost === '127.0.0.1';
 
 const supabaseFunctionBase = rawSupabaseUrl ? `${rawSupabaseUrl}/functions/v1/call-api` : '';
 const localhostApiBase = isLocalhost ? 'http://localhost:3001' : '';
