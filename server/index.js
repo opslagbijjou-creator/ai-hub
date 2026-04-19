@@ -693,7 +693,7 @@ async function runProvisioningJob({ dbClient, jobId, baseUrl }) {
       updated_at: completedAt,
       result: {
         mode: provisioningMode,
-        number: selectedNumber.e164,
+        number: selectedNumber?.e164 || null,
         phoneSid
       }
     })
@@ -717,7 +717,7 @@ async function runProvisioningJob({ dbClient, jobId, baseUrl }) {
     mode: provisioningMode,
     phoneSid,
     assistantId: assistant.id,
-    number: selectedNumber.e164
+    number: selectedNumber?.e164 || null
   };
 }
 

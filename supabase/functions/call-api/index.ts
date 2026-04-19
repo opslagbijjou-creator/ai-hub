@@ -1355,7 +1355,7 @@ async function runProvisioningJob(params: { dbClient: any; jobId: string }) {
     updated_at: completedAt,
     result: {
       mode: "simulated",
-      number: selectedNumber.e164,
+      number: selectedNumber?.e164 || null,
     },
   }).eq("id", jobId);
 
@@ -1374,7 +1374,7 @@ async function runProvisioningJob(params: { dbClient: any; jobId: string }) {
     status: "success",
     mode: "simulated",
     assistantId: assistant.id,
-    number: selectedNumber.e164,
+    number: selectedNumber?.e164 || null,
   };
 }
 
@@ -1561,8 +1561,8 @@ async function handleAdminOverview(req: Request) {
         },
         number: selectedNumber
           ? {
-            e164: selectedNumber.e164,
-            label: selectedNumber.display_label || selectedNumber.e164,
+            e164: selectedNumber?.e164 || null,
+            label: selectedNumber?.display_label || selectedNumber?.e164 || null,
             status: selectedNumber.status,
           }
           : null,
