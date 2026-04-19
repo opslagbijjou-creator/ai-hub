@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import './App.css';
 
@@ -41,6 +41,16 @@ const ProtectedRoute = ({ children }) => {
   }
 
   return children;
+};
+
+const ScrollToTop = () => {
+  const { pathname, search } = useLocation();
+
+  React.useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname, search]);
+
+  return null;
 };
 
 function AppRoutes() {
@@ -88,6 +98,7 @@ function App() {
   return (
     <AppProvider>
       <Router>
+        <ScrollToTop />
         <AppRoutes />
       </Router>
     </AppProvider>
