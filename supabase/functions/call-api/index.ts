@@ -784,10 +784,35 @@ function getAllowedOrigins() {
   );
 }
 
+function isTrustedNetlifyOrigin(origin: string) {
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "https:" && parsed.hostname.endsWith(".netlify.app");
+  } catch {
+    return false;
+  }
+}
+
+function isHttpsOrigin(origin: string) {
+  try {
+    return new URL(origin).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function resolveAllowedOrigin(req: Request) {
   const origin = String(req.headers.get("origin") || "").trim().replace(/\/$/, "");
   if (!origin) return "";
-  return getAllowedOrigins().includes(origin) ? origin : "";
+  if (getAllowedOrigins().includes(origin)) return origin;
+  if (isTrustedNetlifyOrigin(origin)) return origin;
+
+  // Failsafe for production frontends when ALLOWED_ORIGINS is not configured yet.
+  if (CONFIGURED_ALLOWED_ORIGINS.length === 0 && isHttpsOrigin(origin)) {
+    return origin;
+  }
+
+  return "";
 }
 
 function buildResponseHeaders(req: Request) {
