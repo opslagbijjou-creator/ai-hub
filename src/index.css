@@ -1,47 +1,47 @@
 :root,
 .light-mode {
-  --bg-dark: #f6f8fc;
+  --bg-dark: #f7f9fb;
   --bg-surface: #ffffff;
-  --bg-surface-hover: #f3f6fb;
+  --bg-surface-hover: #f2f4f6;
   --bg-surface-border: rgba(15, 23, 42, 0.1);
 
-  --primary: #2f6fed;
-  --primary-strong: #2057c9;
-  --primary-glow: rgba(47, 111, 237, 0.2);
-  --secondary: #0ea5a8;
+  --primary: #3525cd;
+  --primary-strong: #4f46e5;
+  --primary-glow: rgba(53, 37, 205, 0.2);
+  --secondary: #5f5c74;
 
-  --text-main: #162033;
-  --text-muted: #64748b;
+  --text-main: #191c1e;
+  --text-muted: #65627a;
 
   --glass-bg: rgba(255, 255, 255, 0.96);
   --glass-border: rgba(15, 23, 42, 0.08);
 
-  --font-heading: 'Space Grotesk', sans-serif;
-  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --font-heading: 'Manrope', sans-serif;
+  --font-body: 'Inter', sans-serif;
 
   --transition-fast: 0.16s ease;
   --transition-normal: 0.24s ease;
 }
 
 .dark-mode {
-  --bg-dark: #f6f8fc;
+  --bg-dark: #f7f9fb;
   --bg-surface: #ffffff;
-  --bg-surface-hover: #f3f6fb;
+  --bg-surface-hover: #f2f4f6;
   --bg-surface-border: rgba(15, 23, 42, 0.1);
 
-  --primary: #2f6fed;
-  --primary-strong: #2057c9;
-  --primary-glow: rgba(47, 111, 237, 0.2);
-  --secondary: #0ea5a8;
+  --primary: #3525cd;
+  --primary-strong: #4f46e5;
+  --primary-glow: rgba(53, 37, 205, 0.2);
+  --secondary: #5f5c74;
 
-  --text-main: #162033;
-  --text-muted: #64748b;
+  --text-main: #191c1e;
+  --text-muted: #65627a;
 
   --glass-bg: rgba(255, 255, 255, 0.96);
   --glass-border: rgba(15, 23, 42, 0.08);
 
-  --font-heading: 'Space Grotesk', sans-serif;
-  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --font-heading: 'Manrope', sans-serif;
+  --font-body: 'Inter', sans-serif;
 
   --transition-fast: 0.16s ease;
   --transition-normal: 0.24s ease;
