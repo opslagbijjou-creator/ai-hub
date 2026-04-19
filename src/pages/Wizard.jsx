@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bot,
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Globe,
   Loader2,
+  LogOut,
   Mic,
   Sparkles
 } from 'lucide-react';
@@ -168,7 +170,7 @@ const getVoiceSubtitle = (voice) => {
 
 const Wizard = () => {
   const navigate = useNavigate();
-  const { setAssistantConfig, setIsAdmin, apiConfigured, apiConfigMessage } = useAppContext();
+  const { setAssistantConfig, setIsAdmin, apiConfigured, apiConfigMessage, user, signOut } = useAppContext();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [wizardStage, setWizardStage] = useState('form');
@@ -189,6 +191,8 @@ const Wizard = () => {
   const [showAllFaqs, setShowAllFaqs] = useState(false);
   const [showAdvancedIntake, setShowAdvancedIntake] = useState(false);
   const [showAdvancedChannels, setShowAdvancedChannels] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef(null);
 
   const [form, setForm] = useState({
     assistantName: 'Mijn assistent',
@@ -408,6 +412,30 @@ const Wizard = () => {
     loadInitialData();
   }, [loadInitialData]);
 
+  useEffect(() => {
+    if (!profileMenuOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!profileMenuRef.current?.contains(event.target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [profileMenuOpen]);
+
   const selectedAvatar = useMemo(() => {
     return avatars.find((avatar) => avatar.key === form.avatarKey) || avatars[0];
   }, [avatars, form.avatarKey]);
@@ -417,6 +445,10 @@ const Wizard = () => {
   }, [form.numberE164, numberOptions]);
 
   const selectedPlan = getPlanByKey(form.planKey);
+  const profileDisplayName = form.companyName?.trim() || form.assistantName?.trim() || 'Belliq account';
+  const profileEmail = user?.email || '';
+  const profileInitial = (profileDisplayName || profileEmail || 'B').trim().charAt(0).toUpperCase();
+  const profileAvatar = selectedAvatar?.imageUrl || assistantState?.identity?.avatar?.imageUrl || '';
 
   const validationByStep = useMemo(() => {
     const hasSchedule = Object.values(form.availabilitySchedule || {}).some(
@@ -794,6 +826,17 @@ const Wizard = () => {
     if (!previewUrl) return;
     const audio = new Audio(previewUrl);
     audio.play().catch(() => {});
+  };
+
+  const handleSignOut = async () => {
+    setProfileMenuOpen(false);
+
+    try {
+      await signOut();
+      navigate('/login', { replace: true });
+    } catch (error) {
+      setSaveError(normalizeUiError(error, 'Uitloggen mislukt.'));
+    }
   };
 
   const renderStepContent = () => {
@@ -1450,6 +1493,45 @@ const Wizard = () => {
       {saveError && <div className="wizard-alert-top wizard-alert-error">{saveError}</div>}
 
       <div className="wizard-v2-modal">
+        <div className="wizard-v2-shellbar">
+          <div className="wizard-shellbar-copy">
+            <span className="wizard-shellbar-kicker">Setup Wizard</span>
+            <strong>{profileDisplayName}</strong>
+          </div>
+
+          <div className="wizard-profile-menu" ref={profileMenuRef}>
+            <button
+              type="button"
+              className={`wizard-profile-trigger ${profileMenuOpen ? 'open' : ''}`}
+              onClick={() => setProfileMenuOpen((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={profileMenuOpen}
+            >
+              <span className="wizard-profile-avatar">
+                {profileAvatar ? <img src={profileAvatar} alt={profileDisplayName} /> : <span>{profileInitial}</span>}
+              </span>
+              <span className="wizard-profile-meta">
+                <strong>{profileDisplayName}</strong>
+                <small>{profileEmail || 'Ingelogd'}</small>
+              </span>
+              <ChevronDown size={16} />
+            </button>
+
+            {profileMenuOpen && (
+              <div className="wizard-profile-dropdown" role="menu">
+                <div className="wizard-profile-dropdown-head">
+                  <strong>{profileDisplayName}</strong>
+                  <small>{profileEmail || 'Belliq account'}</small>
+                </div>
+                <button type="button" className="wizard-profile-action danger" onClick={handleSignOut} role="menuitem">
+                  <LogOut size={15} />
+                  Uitloggen
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {wizardStage === 'form' && (
           <>
             <div className="wizard-v2-progress-head">
