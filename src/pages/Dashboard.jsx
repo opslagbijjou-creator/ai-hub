@@ -83,6 +83,38 @@ const DetailRow = ({ label, value }) => (
   </div>
 );
 
+const SetupHome = () => {
+  const navigate = useNavigate();
+  const { assistantConfig } = useAppContext();
+
+  return (
+    <div className="dashboard-overview dashboard-shell animate-fade-in">
+      <div className="dashboard-header">
+        <span className="dashboard-eyebrow">Dashboard</span>
+        <h1 className="font-heading">{assistantConfig?.companyName || 'Jouw AI assistent'}</h1>
+        <p className="text-muted">
+          Simpel overzicht: rond eerst je setup af, test daarna je assistent en ga dan live.
+        </p>
+      </div>
+
+      <section className="glass-panel" style={{ padding: '1rem', borderRadius: '16px', marginBottom: '0.9rem' }}>
+        <h3 style={{ marginBottom: '0.35rem' }}>Wat je nu moet doen</h3>
+        <p className="text-muted" style={{ marginBottom: '0.9rem' }}>
+          De setup wizard is leidend. Als die nog niet klaar is, blijf je automatisch in die flow.
+        </p>
+        <div className="assistant-actions">
+          <button className="btn-primary" onClick={() => navigate('/setup-wizard')}>
+            Ga verder met setup
+          </button>
+          <button className="btn-secondary" onClick={() => navigate('/dashboard/call-studio')}>
+            Open Call Studio
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+};
+
 const KnowledgeBase = () => {
   const { knowledgeBase, setKnowledgeBase } = useAppContext();
   const [urlInput, setUrlInput] = useState('');
@@ -1341,6 +1373,10 @@ const Catalog = () => {
   );
 };
 
+void KnowledgeBase;
+void Overview;
+void Catalog;
+
 const Dashboard = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1379,13 +1415,10 @@ const Dashboard = () => {
         />
         <main className="dashboard-content">
           <Routes>
-            <Route path="/" element={<Overview />} />
-            <Route path="/integrations" element={<Overview />} />
+            <Route path="/" element={<SetupHome />} />
             <Route path="/admin" element={<AdminConsole />} />
-            <Route path="/catalog" element={<Catalog />} />
-            <Route path="/knowledge-base" element={<KnowledgeBase />} />
             <Route path="/call-studio" element={<CallStudio />} />
-            <Route path="*" element={<Overview />} />
+            <Route path="*" element={<SetupHome />} />
           </Routes>
         </main>
       </div>

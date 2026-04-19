@@ -190,6 +190,23 @@ function normalizeArray(value) {
   return [];
 }
 
+function normalizeBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'ja', 'aan', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'nee', 'uit', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function normalizeStep(value, fallback = 1) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(5, Math.max(1, Math.round(parsed)));
+}
+
 function safeText(value, fallback = '') {
   const text = String(value ?? '').trim();
   return text || fallback;
@@ -279,6 +296,9 @@ function requireAdmin(req, res, next) {
 }
 
 function onboardingFromPayload(payload = {}) {
+  const hasSetupStep = Object.prototype.hasOwnProperty.call(payload, 'setupStep');
+  const hasSetupCompleted = Object.prototype.hasOwnProperty.call(payload, 'setupCompleted');
+
   return {
     companyName: safeText(payload.companyName, 'Mijn Bedrijf'),
     businessType: safeText(payload.businessType),
@@ -292,7 +312,9 @@ function onboardingFromPayload(payload = {}) {
     voiceKey: safeText(payload.voiceKey, VOICE_OPTIONS[0].key),
     numberE164: normalizePhoneNumber(payload.numberE164 || payload.phoneNumber),
     numberLabel: safeText(payload.numberLabel),
-    planKey: normalizePlanKey(payload.planKey)
+    planKey: normalizePlanKey(payload.planKey),
+    setupStep: hasSetupStep ? normalizeStep(payload.setupStep, 1) : undefined,
+    setupCompleted: hasSetupCompleted ? normalizeBoolean(payload.setupCompleted, false) : undefined
   };
 }
 
@@ -785,12 +807,33 @@ route('get', '/api/assistant/state', requireAuth, async (req, res) => {
       .maybeSingle();
 
     const selectedPlan = getPlanConfig(subscription?.plan_key || assistant.desired_plan);
+    const wizardStep = normalizeStep(assistant?.setup_step, 1);
+    const wizardCompleted = normalizeBoolean(assistant?.setup_completed, false);
+    const wizardChecklist = [
+      { key: 'identiteit', label: 'Identiteit', done: wizardCompleted || wizardStep > 1 },
+      { key: 'website', label: 'Website', done: wizardCompleted || wizardStep > 2 },
+      { key: 'stem', label: 'Stem', done: wizardCompleted || wizardStep > 3 },
+      { key: 'instructies', label: 'Instructies', done: wizardCompleted || wizardStep > 4 },
+      { key: 'bereikbaarheid', label: 'Bereikbaarheid', done: wizardCompleted }
+    ];
+    const wizardCompletedCount = wizardChecklist.filter((entry) => entry.done).length;
 
     res.json({
       assistant,
       profile,
       voice,
       number,
+      identity: {
+        name: assistant?.display_name || profile?.company_name || 'Mijn assistent',
+        avatarKey: assistant?.avatar_key || 'avatar_01',
+        avatar: null
+      },
+      wizard: {
+        step: wizardStep,
+        completed: wizardCompleted,
+        completedCount: wizardCompletedCount,
+        checklist: wizardChecklist
+      },
       latestInvoice: invoice || null,
       latestProvisioningJob: provisioningJob || null,
       subscription: subscription || null,
@@ -875,6 +918,14 @@ async function handleOnboardingSave(req, res, overridePayload = null) {
     const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
     const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
     const prompt = buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
+    const setupStep =
+      payload.setupStep !== undefined
+        ? payload.setupStep
+        : normalizeStep(assistant?.setup_step, 1);
+    const setupCompleted =
+      payload.setupCompleted !== undefined
+        ? payload.setupCompleted
+        : normalizeBoolean(assistant?.setup_completed, false);
 
     const { data: updatedAssistant, error: assistantUpdateError } = await dbClient
       .from('assistants')
@@ -883,6 +934,8 @@ async function handleOnboardingSave(req, res, overridePayload = null) {
         desired_plan: payload.planKey,
         prompt,
         status: 'configured',
+        setup_step: setupStep,
+        setup_completed: setupCompleted,
         updated_at: nowIso()
       })
       .eq('id', assistant.id)

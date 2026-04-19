@@ -9,10 +9,7 @@ const Sidebar = ({ mobileOpen = false, onClose = () => {} }) => {
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
-    { to: '/dashboard/call-studio', label: 'Call Studio', icon: 'call' },
-    { to: '/dashboard/knowledge-base', label: 'Knowledge Base', icon: 'menu_book' },
-    { to: '/setup-wizard', label: 'Setup Wizard', icon: 'auto_fix' },
-    { to: '/dashboard/integrations', label: 'Integrations', icon: 'shopping_cart' }
+    { to: '/setup-wizard', label: 'Setup Wizard', icon: 'auto_fix' }
   ];
 
   const handleSignOut = () => {
