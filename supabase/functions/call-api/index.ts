@@ -843,9 +843,26 @@ async function fetchTwilioOwnedNumbers() {
 }
 
 function normalizeProvider(value: unknown) {
-  const provider = String(value || "").trim().toLowerCase();
-  if (["shopify", "prestashop", "woocommerce"].includes(provider)) return provider;
+  const provider = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+  const canonicalMap: Record<string, string> = {
+    magento2: "magento",
+    "magento-2": "magento",
+    "magento_2": "magento",
+    bigcommerce: "bigcommerce",
+    "big-commerce": "bigcommerce",
+    stripebilling: "stripe",
+    "stripe-billing": "stripe",
+  };
+  const normalized = canonicalMap[provider] || provider;
+
+  if (["shopify", "prestashop", "woocommerce", "magento", "bigcommerce", "stripe"].includes(normalized)) {
+    return normalized;
+  }
   return "";
+}
+
+function supportsSelfServiceIntegration(provider: string) {
+  return ["shopify", "prestashop", "woocommerce"].includes(provider);
 }
 
 function normalizeStoreUrl(value: unknown) {
@@ -1206,7 +1223,7 @@ function detectOrderLookupIntent(text: string) {
   const orderReference = hashRef?.[1] || namedRef?.[3] || "";
   if (!orderReference) return null;
 
-  const providerMatch = normalized.match(/\b(shopify|prestashop|woocommerce)\b/i);
+  const providerMatch = normalized.match(/\b(shopify|prestashop|woocommerce|magento|bigcommerce|stripe)\b/i);
 
   return {
     orderReference,
@@ -2593,7 +2610,7 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
     const apiSecret = safeText(body.apiSecret || body.api_secret);
     const webhookSecret = safeText(body.webhookSecret || body.webhook_secret);
     const requestedModeRaw = safeText(body.mode || body.setupMode);
-    const setupMode =
+    let setupMode =
       requestedModeRaw === "self_service" ||
       accessTokenValue ||
       apiKey ||
@@ -2604,10 +2621,14 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
     const setupNotes = safeText(body.setupNotes || body.notes || body.note);
 
     if (!provider) {
-      return errorJson("provider is verplicht (shopify, prestashop, woocommerce).", 400);
+      return errorJson("provider is verplicht (shopify, prestashop, woocommerce, magento, bigcommerce, stripe).", 400);
     }
     if (!storeUrl) {
       return errorJson("storeUrl is verplicht.", 400);
+    }
+
+    if (setupMode === "self_service" && !supportsSelfServiceIntegration(provider)) {
+      setupMode = "concierge";
     }
 
     if (setupMode === "self_service" && provider === "shopify" && !accessTokenValue) {
@@ -2625,6 +2646,11 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
       contactEmail,
       setupNotes,
       requestedAt: nowIso(),
+      modeRequested: requestedModeRaw || null,
+      modeFallback:
+        requestedModeRaw === "self_service" && setupMode === "concierge"
+          ? "self_service_not_supported_for_provider"
+          : null,
       managedBy: setupMode === "concierge" ? "admin_after_request" : "self_service",
     };
 
@@ -2769,9 +2795,11 @@ async function handleAdminIntegrationComplete(req: Request) {
         ? existingIntegration.metadata
         : {};
 
+    const defaultSetupMode = supportsSelfServiceIntegration(resolvedProvider) ? "self_service" : "concierge";
+
     const metadata = {
       ...previousMetadata,
-      setupMode: previousMetadata.setupMode || "concierge",
+      setupMode: previousMetadata.setupMode || defaultSetupMode,
       contactEmail: contactEmail || previousMetadata.contactEmail || null,
       setupNotes: setupNotes || previousMetadata.setupNotes || null,
       adminNotes: adminNotes || previousMetadata.adminNotes || null,
@@ -3008,7 +3036,7 @@ Deno.serve(async (req) => {
       return await handleAdminIntegrationComplete(req);
     }
 
-    if (method === "POST" && path === "/admin/provision-run") {
+    if (method === "POST" && (path === "/admin/provision-run" || path === "/admin/provision/run")) {
       return await handleAdminProvisionRun(req);
     }
 

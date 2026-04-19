@@ -1305,7 +1305,7 @@ route('post', '/api/provision/run', requireAuth, async (req, res) => {
   }
 });
 
-route('post', '/api/admin/provision/run', requireAdmin, async (req, res) => {
+const handleAdminProvisionRun = async (req, res) => {
   try {
     const dbClient = getServiceClient();
     const jobId = safeText(req.body?.jobId);
@@ -1324,7 +1324,10 @@ route('post', '/api/admin/provision/run', requireAdmin, async (req, res) => {
   } catch (error) {
     return sendDbError(res, error);
   }
-});
+};
+
+route('post', '/api/admin/provision/run', requireAdmin, handleAdminProvisionRun);
+route('post', '/api/admin/provision-run', requireAdmin, handleAdminProvisionRun);
 
 route('get', '/api/usage/summary', requireAuth, async (req, res) => {
   try {

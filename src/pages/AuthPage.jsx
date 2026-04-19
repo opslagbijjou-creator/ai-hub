@@ -94,6 +94,8 @@ const AuthPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading || googleLoading) return;
+
     setError('');
     setNotice('');
 
@@ -136,6 +138,8 @@ const AuthPage = () => {
   };
 
   const handleGoogleLogin = async () => {
+    if (loading || googleLoading) return;
+
     setError('');
     setNotice('');
 
@@ -281,7 +285,7 @@ const AuthPage = () => {
               type="button"
               className="auth-field"
               onClick={handleResendConfirmation}
-              disabled={resendLoading || !supabaseConfigured}
+              disabled={resendLoading || loading || googleLoading || !supabaseConfigured}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -386,7 +390,7 @@ const AuthPage = () => {
             {!isLogin && <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Minimaal 6 tekens</small>}
           </div>
 
-          <button className="btn-primary auth-field" type="submit" disabled={loading || !supabaseConfigured} style={{ width: '100%', padding: '14px', fontSize: '1rem', marginTop: '0.5rem', opacity: supabaseConfigured ? 1 : 0.7 }}>
+          <button className="btn-primary auth-field" type="submit" disabled={loading || googleLoading || !supabaseConfigured} style={{ width: '100%', padding: '14px', fontSize: '1rem', marginTop: '0.5rem', opacity: supabaseConfigured ? 1 : 0.7 }}>
             {loading ? 'Even geduld...' : (isLogin ? 'Inloggen' : 'Account Aanmaken')}
             {!loading && <ChevronRight size={18} />}
           </button>
