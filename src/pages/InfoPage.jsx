@@ -9,10 +9,10 @@ const InfoPage = () => {
 
   return (
     <div className="belliq-page bg-surface text-on-surface">
-      <PublicHeader active="how" />
+      <PublicHeader active="how" headerVariant="how" />
 
       <main className="belliq-main">
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-24">
+        <section className="max-w-7xl mx-auto px-6 mb-24">
           <div className="flex flex-col md:flex-row items-center gap-16">
             <div className="md:w-1/2">
               <span className="bg-secondary-container text-on-secondary-container px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest mb-6 inline-block">
@@ -55,7 +55,7 @@ const InfoPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-32">
+        <section className="max-w-7xl mx-auto px-6 mb-32">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             <div className="md:col-span-7 bg-surface-container-lowest rounded-lg p-10 shadow-sm relative overflow-hidden group">
               <div className="relative z-10">
@@ -64,7 +64,7 @@ const InfoPage = () => {
                 </div>
                 <h3 className="text-3xl font-bold mb-4">1. Bedrijfscontext uploaden</h3>
                 <p className="text-on-surface-variant text-lg leading-relaxed mb-8 max-w-md">
-                  Sleep PDF&apos;s, handleidingen of URL&apos;s naar ons platform. Onze AI analyseert de data en creert een
+                  Sleep PDF&apos;s, handleidingen of URL&apos;s naar ons platform. Onze AI analyseert de data en creëert een
                   semantisch kennisnetwerk specifiek voor jouw merk.
                 </p>
                 <div className="flex gap-3">
@@ -157,7 +157,7 @@ const InfoPage = () => {
         </section>
 
         <section className="bg-surface-container-low py-32 overflow-hidden">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto px-6">
             <div className="text-center mb-20">
               <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-4">De Belliq Architectuur</h2>
               <p className="text-on-surface-variant text-lg">Een naadloze verbinding tussen jouw kennis en de eindgebruiker.</p>
@@ -200,7 +200,7 @@ const InfoPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-32 text-center">
+        <section className="max-w-7xl mx-auto px-6 py-32 text-center">
           <div className="bg-on-primary-fixed-variant rounded-lg p-16 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-12 opacity-10">
               <span className="material-symbols-outlined text-[300px]" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -230,7 +230,7 @@ const InfoPage = () => {
         </section>
       </main>
 
-      <PublicFooter />
+      <PublicFooter variant="how" />
     </div>
   );
 };

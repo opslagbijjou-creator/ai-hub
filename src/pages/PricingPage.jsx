@@ -14,10 +14,10 @@ const PricingPage = () => {
 
   return (
     <div className="belliq-page bg-background text-on-surface selection:bg-primary-container selection:text-on-primary-container">
-      <PublicHeader active="pricing" />
+      <PublicHeader active="pricing" headerVariant="pricing" />
 
       <main className="belliq-main pb-24">
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-20 text-center">
+        <section className="max-w-7xl mx-auto px-6 mb-20 text-center">
           <span className="inline-block px-4 py-1.5 rounded-full bg-secondary-container text-on-secondary-container text-xs font-bold uppercase tracking-widest mb-6">
             Prijzen die meeschalen
           </span>
@@ -30,7 +30,7 @@ const PricingPage = () => {
           </p>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-8 mb-32">
+        <section className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 mb-32">
           <div className="group p-8 rounded-lg bg-surface-container-lowest border border-outline-variant/15 flex flex-col hover:scale-[1.02] transition-all duration-300">
             <div className="mb-8">
               <h3 className="text-xl font-bold mb-2">Startup</h3>
@@ -169,7 +169,7 @@ const PricingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-5xl mx-auto px-4 sm:px-6 mb-32">
+        <section className="max-w-5xl mx-auto px-6 mb-32">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight mb-4">Vergelijk Functies</h2>
             <p className="text-on-surface-variant">Een diepere duik in wat elk plan te bieden heeft.</p>
@@ -232,7 +232,7 @@ const PricingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-4xl mx-auto px-4 sm:px-6">
+        <section className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight mb-4">Veelgestelde vragen</h2>
             <p className="text-on-surface-variant">Alles wat je moet weten over onze diensten en betalingen.</p>
@@ -284,7 +284,7 @@ const PricingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mt-32">
+        <section className="max-w-7xl mx-auto px-6 mt-32">
           <div className="relative overflow-hidden rounded-xl bg-primary-fixed p-12 md:p-20 flex flex-col items-center text-center">
             <div className="absolute inset-0 opacity-10 pointer-events-none">
               <div className="absolute top-0 right-0 w-96 h-96 bg-primary rounded-full blur-[120px]"></div>
@@ -314,7 +314,7 @@ const PricingPage = () => {
         </section>
       </main>
 
-      <PublicFooter />
+      <PublicFooter variant="pricing" />
     </div>
   );
 };

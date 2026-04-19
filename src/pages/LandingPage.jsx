@@ -6,13 +6,21 @@ import './Belliq.css';
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const scrollToFeatures = () => {
+    const section = document.getElementById('features-grid');
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="belliq-page bg-surface text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
-      <PublicHeader active="features" />
+      <PublicHeader active="features" headerVariant="features" />
 
       <main className="belliq-main overflow-hidden">
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-24">
+        <section className="max-w-7xl mx-auto px-6 mb-24">
           <div className="flex flex-col md:flex-row items-center gap-16">
             <div className="flex-1 text-center md:text-left">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-secondary-container text-on-secondary-container rounded-full text-sm font-medium mb-6">
@@ -28,7 +36,7 @@ const LandingPage = () => {
               </p>
               <div className="flex flex-wrap justify-center md:justify-start gap-4">
                 <button
-                  onClick={() => navigate('/info')}
+                  onClick={scrollToFeatures}
                   className="bg-indigo-700 text-white px-8 py-4 rounded-lg font-semibold hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-indigo-500/30"
                 >
                   Bekijk alle features
@@ -75,7 +83,7 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-20">
+        <section id="features-grid" className="max-w-7xl mx-auto px-6 py-20">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
             <div className="md:col-span-8 bg-surface-container-lowest rounded-lg p-10 group hover:bg-white transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 flex flex-col justify-between overflow-hidden relative">
               <div className="relative z-10">
@@ -157,7 +165,7 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-20 text-center relative">
+        <section className="max-w-7xl mx-auto px-6 py-20 text-center relative">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] -z-10"></div>
           <div className="max-w-3xl mx-auto">
             <h2 className="font-headline text-4xl md:text-5xl font-bold mb-8">Klaar voor echte rust?</h2>
@@ -177,7 +185,7 @@ const LandingPage = () => {
         </section>
       </main>
 
-      <PublicFooter />
+      <PublicFooter variant="features" />
     </div>
   );
 };
