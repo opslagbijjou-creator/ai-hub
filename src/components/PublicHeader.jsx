@@ -71,7 +71,7 @@ const PublicHeader = ({ active = 'features' }) => {
               onClick={() => navigateTo('/login')}
               className="bg-indigo-700 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-indigo-500/20"
             >
-              Aan de slag
+              Inloggen
             </button>
           </div>
 
@@ -80,7 +80,7 @@ const PublicHeader = ({ active = 'features' }) => {
               onClick={() => navigateTo('/login')}
               className="bg-indigo-700 text-white px-4 py-2 rounded-full text-sm font-semibold hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-indigo-500/20"
             >
-              Start
+              Inloggen
             </button>
             <button
               type="button"
@@ -155,7 +155,7 @@ const PublicHeader = ({ active = 'features' }) => {
               onClick={() => navigateTo('/login')}
               className="w-full bg-indigo-700 text-white px-5 py-3 rounded-xl text-sm font-semibold hover:brightness-110 transition-all shadow-lg shadow-indigo-500/20"
             >
-              Naar dashboard
+              Inloggen
             </button>
           </div>
         </aside>
