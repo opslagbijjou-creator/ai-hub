@@ -1,16 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import {
-  BookOpen,
-  Bot,
-  Grid,
-  LayoutDashboard,
-  LogOut,
-  Mic,
-  Phone,
-  ShieldCheck,
-  Settings
-} from 'lucide-react';
+import { BookOpen, Grid, LayoutDashboard, LogOut, Mic, Phone, ShieldCheck, Settings } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import './Sidebar.css';
 
@@ -20,8 +10,7 @@ const Sidebar = () => {
   return (
     <aside className="sidebar glass-panel">
       <div className="sidebar-header">
-        <Bot className="text-gradient" size={28} />
-        <span className="font-heading logo-text">AI Hub</span>
+        <span className="font-heading logo-text">Belliq</span>
       </div>
 
       <div className="sidebar-nav">

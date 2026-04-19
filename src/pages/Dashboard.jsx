@@ -48,7 +48,10 @@ const StatusPill = ({ label, value }) => (
 const PROVIDER_LABELS = {
   shopify: 'Shopify',
   prestashop: 'PrestaShop',
-  woocommerce: 'WooCommerce'
+  woocommerce: 'WooCommerce',
+  magento: 'Magento 2',
+  bigcommerce: 'BigCommerce',
+  stripe: 'Stripe Billing'
 };
 
 const INTEGRATION_STATUS_LABELS = {
@@ -57,6 +60,8 @@ const INTEGRATION_STATUS_LABELS = {
   disconnected: 'Losgekoppeld',
   error: 'Actie nodig'
 };
+
+const SELF_SERVICE_PROVIDERS = new Set(['shopify', 'prestashop', 'woocommerce']);
 
 const SetupStepCard = ({ title, description, done, tone = 'default' }) => (
   <div className={`setup-step-card ${done ? 'is-done' : ''} tone-${tone}`}>
@@ -199,6 +204,7 @@ const Overview = () => {
   });
   const [orderLookupLoading, setOrderLookupLoading] = useState(false);
   const [orderLookupResult, setOrderLookupResult] = useState(null);
+  const supportsSelfService = SELF_SERVICE_PROVIDERS.has(integrationDraft.provider);
 
   const authFetch = useCallback(async (path, options = {}) => {
     const {
@@ -341,6 +347,13 @@ const Overview = () => {
   };
 
   const connectIntegration = async () => {
+    if (integrationDraft.mode === 'self_service' && !supportsSelfService) {
+      setIntegrationNotice(
+        `${PROVIDER_LABELS[integrationDraft.provider] || integrationDraft.provider} kan nu alleen via "Wij regelen dit".`
+      );
+      return;
+    }
+
     setIntegrationSaving(true);
     setIntegrationNotice('');
 
@@ -413,7 +426,7 @@ const Overview = () => {
         throw new Error(data?.error || 'Loskoppelen mislukt.');
       }
 
-      setIntegrationNotice(`${provider} is losgekoppeld.`);
+      setIntegrationNotice(`${PROVIDER_LABELS[provider] || provider} is losgekoppeld.`);
       await loadData();
     } catch (disconnectError) {
       setIntegrationNotice(disconnectError?.message || 'Kon koppeling niet loskoppelen.');
@@ -461,6 +474,7 @@ const Overview = () => {
   const usage = usageSummary?.usage;
   const connectedIntegrations = integrations.filter((entry) => entry.status === 'connected');
   const pendingIntegrations = integrations.filter((entry) => entry.status === 'pending_setup');
+  const lookupReadyIntegrations = connectedIntegrations.filter((entry) => SELF_SERVICE_PROVIDERS.has(entry.provider));
   const companyName =
     assistantState?.profile?.company_name || assistantState?.assistant?.display_name || assistantConfig?.companyName || 'je bedrijf';
   const identityName = assistantState?.identity?.name || assistantState?.assistant?.display_name || companyName;
@@ -531,7 +545,8 @@ const Overview = () => {
     integrationSaving ||
     !integrationDraft.storeUrl.trim() ||
     (integrationDraft.mode === 'self_service' &&
-      ((integrationDraft.provider === 'shopify' && !integrationDraft.accessToken.trim()) ||
+      (!supportsSelfService ||
+        (integrationDraft.provider === 'shopify' && !integrationDraft.accessToken.trim()) ||
         (integrationDraft.provider === 'prestashop' && !integrationDraft.apiKey.trim()) ||
         (integrationDraft.provider === 'woocommerce' &&
           (!integrationDraft.apiKey.trim() || !integrationDraft.apiSecret.trim()))));
@@ -909,7 +924,7 @@ const Overview = () => {
                 onClick={() =>
                   setIntegrationDraft((prev) => ({
                     ...prev,
-                    mode: 'self_service'
+                    mode: SELF_SERVICE_PROVIDERS.has(prev.provider) ? 'self_service' : 'concierge'
                   }))}
               >
                 Ik koppel het zelf
@@ -925,7 +940,9 @@ const Overview = () => {
                 <p className="text-muted">
                   {integrationDraft.mode === 'concierge'
                     ? 'Je klant kiest alleen platform, shop-URL en een korte notitie. Jij of admin rondt de koppeling daarna af.'
-                    : 'Gebruik dit alleen als je de benodigde webshop-inloggegevens al hebt.'}
+                    : supportsSelfService
+                      ? 'Gebruik dit alleen als je de benodigde webshop-inloggegevens al hebt.'
+                      : 'Voor dit platform gebruiken we nu alleen concierge setup.'}
                 </p>
               </div>
 
@@ -939,6 +956,10 @@ const Overview = () => {
                     setIntegrationDraft((prev) => ({
                       ...prev,
                       provider: event.target.value,
+                      mode:
+                        prev.mode === 'self_service' && !SELF_SERVICE_PROVIDERS.has(event.target.value)
+                          ? 'concierge'
+                          : prev.mode,
                       accessToken: '',
                       apiKey: '',
                       apiSecret: ''
@@ -947,6 +968,9 @@ const Overview = () => {
                   <option value="shopify">Shopify</option>
                   <option value="prestashop">PrestaShop</option>
                   <option value="woocommerce">WooCommerce</option>
+                  <option value="magento">Magento 2 (concierge)</option>
+                  <option value="bigcommerce">BigCommerce (concierge)</option>
+                  <option value="stripe">Stripe Billing (concierge)</option>
                 </select>
               </label>
 
@@ -1068,6 +1092,12 @@ const Overview = () => {
                   </label>
                 </>
               )}
+
+              {integrationDraft.mode === 'self_service' && !supportsSelfService && (
+                <div className="glass-panel" style={{ padding: '0.7rem 0.85rem', fontSize: '0.85rem' }}>
+                  Dit platform ondersteunt nu alleen concierge setup.
+                </div>
+              )}
             </div>
 
             <button
@@ -1174,13 +1204,15 @@ const Overview = () => {
               <button
                 className="btn-secondary"
                 onClick={testOrderLookup}
-                disabled={orderLookupLoading || !orderLookupDraft.orderReference.trim() || connectedIntegrations.length === 0}
+                disabled={orderLookupLoading || !orderLookupDraft.orderReference.trim() || lookupReadyIntegrations.length === 0}
               >
                 <RefreshCcw size={14} /> {orderLookupLoading ? 'Zoeken...' : 'Check orderstatus'}
               </button>
 
-              {connectedIntegrations.length === 0 && (
-                <p className="text-muted commerce-empty-note">Deze test wordt actief zodra een shop live is gekoppeld.</p>
+              {lookupReadyIntegrations.length === 0 && (
+                <p className="text-muted commerce-empty-note">
+                  Deze test werkt zodra Shopify, PrestaShop of WooCommerce live is gekoppeld.
+                </p>
               )}
 
               {orderLookupResult && (

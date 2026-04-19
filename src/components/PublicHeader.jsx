@@ -43,8 +43,7 @@ const PublicHeader = ({ active = 'features' }) => {
     <>
       <header className="fixed top-0 w-full z-50 bg-[#f7f9fb]/70 backdrop-blur-xl shadow-sm shadow-indigo-500/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex justify-between items-center gap-3">
-          <button className="flex items-center gap-3" onClick={() => navigateTo('/')}>
-            <img src="/favicon.svg" alt="Belliq logo" className="w-7 h-7 sm:w-8 sm:h-8" />
+          <button className="flex items-center" onClick={() => navigateTo('/')}>
             <div className="text-xl sm:text-2xl font-bold tracking-tighter text-indigo-700">Belliq</div>
           </button>
 
@@ -119,8 +118,7 @@ const PublicHeader = ({ active = 'features' }) => {
         >
           <div className="px-5 pt-5 pb-4 border-b border-slate-200/80">
             <div className="flex items-center justify-between">
-              <button className="flex items-center gap-2" onClick={() => navigateTo('/')}>
-                <img src="/favicon.svg" alt="Belliq logo" className="w-6 h-6" />
+              <button className="flex items-center" onClick={() => navigateTo('/')}>
                 <span className="text-lg font-bold text-indigo-700">Belliq</span>
               </button>
               <button

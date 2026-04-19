@@ -20,8 +20,7 @@ const PublicFooter = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="bg-slate-200 h-[1px] w-full mb-8"></div>
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <button onClick={() => navigateTo('/')} className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="Belliq logo" className="w-6 h-6" />
+          <button onClick={() => navigateTo('/')} className="flex items-center">
             <span className="text-lg font-black text-slate-900">Belliq</span>
           </button>
 
