@@ -12,10 +12,7 @@ const ADMIN_UIDS = Array.from(new Set([...DEFAULT_ADMIN_UIDS, ...CONFIGURED_ADMI
 
 export const AppProvider = ({ children }) => {
   const [assistantConfig, setAssistantConfig] = useState(null);
-  const [theme, setTheme] = useState(() => {
-    if (typeof window === 'undefined') return 'light-mode';
-    return localStorage.getItem('theme') || 'light-mode';
-  });
+  const [theme, setTheme] = useState('light-mode');
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(() => hasSupabaseConfig);
   const isAdmin = Boolean(user?.id && ADMIN_UIDS.includes(user.id));
@@ -106,12 +103,12 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    document.body.className = theme;
-    localStorage.setItem('theme', theme);
+    document.body.className = 'light-mode';
+    localStorage.setItem('theme', 'light-mode');
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'dark-mode' ? 'light-mode' : 'dark-mode');
+    setTheme('light-mode');
   };
 
   const signOut = async () => {

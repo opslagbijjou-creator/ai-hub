@@ -7,17 +7,15 @@ import {
   LayoutDashboard,
   LogOut,
   Mic,
-  Moon,
   Phone,
   ShieldCheck,
-  Settings,
-  Sun
+  Settings
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import './Sidebar.css';
 
 const Sidebar = () => {
-  const { theme, toggleTheme, signOut, user, isAdmin } = useAppContext();
+  const { signOut, user, isAdmin } = useAppContext();
 
   return (
     <aside className="sidebar glass-panel">
@@ -31,19 +29,19 @@ const Sidebar = () => {
           <p className="nav-label">Main</p>
           <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
             <LayoutDashboard size={20} />
-            <span>Overview</span>
+            <span>Overzicht</span>
           </NavLink>
           <NavLink to="/dashboard/catalog" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
             <Grid size={20} />
-            <span>App Store</span>
+            <span>Apps</span>
           </NavLink>
         </div>
 
         <div className="nav-section">
-          <p className="nav-label">Call Assistant</p>
+          <p className="nav-label">AI Assistent</p>
           <NavLink to="/setup-wizard" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
             <Phone size={20} />
-            <span>Onboarding Wizard</span>
+            <span>Setup wizard</span>
           </NavLink>
           <NavLink to="/dashboard/call-studio" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
             <Mic size={20} />
@@ -52,17 +50,17 @@ const Sidebar = () => {
         </div>
 
         <div className="nav-section">
-          <p className="nav-label">Training & Config</p>
+          <p className="nav-label">Instellingen</p>
           <NavLink
             to="/dashboard/knowledge-base"
             className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
           >
             <BookOpen size={20} />
-            <span>Knowledge Base</span>
+            <span>Kennisbank</span>
           </NavLink>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
             <Settings size={20} />
-            <span>Account Settings</span>
+            <span>Account</span>
           </NavLink>
         </div>
 
@@ -93,13 +91,9 @@ const Sidebar = () => {
             {isAdmin ? ' · admin' : ''}
           </div>
         )}
-        <button className="nav-item" onClick={toggleTheme} style={{ justifyContent: 'flex-start' }}>
-          {theme === 'dark-mode' ? <Sun size={20} /> : <Moon size={20} />}
-          <span>{theme === 'dark-mode' ? 'Light Mode' : 'Dark Mode'}</span>
-        </button>
         <button className="nav-item logout-btn" style={{ justifyContent: 'flex-start' }} onClick={signOut}>
           <LogOut size={20} />
-          <span>Log Out</span>
+          <span>Uitloggen</span>
         </button>
       </div>
     </aside>

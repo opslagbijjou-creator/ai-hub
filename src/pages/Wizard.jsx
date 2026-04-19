@@ -272,10 +272,6 @@ const Wizard = () => {
     loadInitialData();
   }, [loadInitialData]);
 
-  const selectedVoice = useMemo(() => {
-    return voices.find((voice) => voice.key === form.voiceKey) || voices[0];
-  }, [voices, form.voiceKey]);
-
   const selectedAvatar = useMemo(() => {
     return avatars.find((avatar) => avatar.key === form.avatarKey) || avatars[0];
   }, [avatars, form.avatarKey]);
