@@ -1,99 +1,111 @@
 import React from 'react';
-import { Database, FileText, LockKeyhole, Scale } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import PublicFooter from '../components/PublicFooter';
 import PublicHeader from '../components/PublicHeader';
-import './LandingPage.css';
+import './Belliq.css';
 
 const privacyCards = [
   {
-    icon: Database,
-    title: 'Welke data dit product verwerkt',
+    title: 'Welke gegevens we verwerken',
     items: [
       'Accountgegevens zoals naam, e-mail en gebruikers-ID.',
-      'Assistentconfiguratie zoals bedrijfsinformatie, openingstijden, prompt en gekozen stem.',
-      'Gespreksdata zoals web tests, live call metadata, transcripts en usage-registratie.',
-      'Optionele integratiegegevens voor gekoppelde shopsystemen en serviceprocessen.'
+      'Assistentinstellingen zoals bedrijfsinformatie, openingstijden, stem en script.',
+      'Gespreksinformatie zoals testgesprekken, call metadata en usage-registratie.',
+      'Optionele webshop-context als je Shopify, WooCommerce of PrestaShop koppelt.'
     ]
   },
   {
-    icon: Scale,
-    title: 'Rolverdeling onder de AVG',
+    title: 'Waarom we dit verwerken',
     items: [
-      'Voor klantdata in gesprekken ben jij in de meeste gevallen verwerkingsverantwoordelijke.',
-      'Het platform functioneert dan doorgaans als verwerker namens jouw bedrijf.',
-      'Voor eigen account-, facturatie- en beveiligingsdata is het platform zelf verwerkingsverantwoordelijke.',
-      'Laat deze rolverdeling altijd aansluiten op je contracten, privacyverklaring en DPA.'
+      'Om jouw AI-assistent te kunnen configureren en laten werken zoals jij wilt.',
+      'Om kwaliteit, stabiliteit en support van het platform te verbeteren.',
+      'Om gebruik en facturatie correct te tonen in dashboard en abonnement.',
+      'Om beveiliging en fraudepreventie technisch te kunnen uitvoeren.'
     ]
   },
   {
-    icon: LockKeyhole,
-    title: 'Beveiligingsbasis',
+    title: 'Hoe we beveiligen',
     items: [
-      'Supabase Auth voor toegang en tenant-isolatie via Row Level Security.',
-      'Edge Functions voor server-side logica zodat gevoelige sleutels niet in de browser staan.',
-      'Gescheiden resources per gebruiker en per assistent.',
-      'Ruimte om aanvullende bewaartermijnen, logging en exportprocedures vast te leggen voor productie.'
+      'Tenant-isolatie met Supabase Auth en Row Level Security.',
+      'Server-side verwerking voor gevoelige sleutels en integratietokens.',
+      'Gescheiden toegang per gebruiker, workspace en assistent.',
+      'Continu verbeteren van logging, bewaartermijnen en toegangscontrole.'
     ]
   },
   {
-    icon: FileText,
-    title: 'Subverwerkers en infrastructuur',
+    title: 'Jouw rechten',
     items: [
-      'Supabase voor auth, database en serverless functies.',
-      'OpenAI voor transcriptie en antwoordgeneratie.',
-      'ElevenLabs voor spraakweergave.',
-      'Twilio alleen wanneer je echte telefonie activeert.'
+      'Inzage, correctie en verwijdering van persoonsgegevens waar van toepassing.',
+      'Export en opschoning van assistentdata op accountniveau.',
+      'Afschakelen van integraties en beperken van datagebruik in instellingen.',
+      'Contact opnemen bij vragen over privacy of gegevensverwerking.'
     ]
   }
 ];
 
 const PrivacyPage = () => {
+  const navigate = useNavigate();
+
   return (
-    <div className="landing-container marketing-page">
-      <div className="marketing-grid"></div>
-      <PublicHeader active="privacy" />
+    <div className="belliq-page bg-surface text-on-surface">
+      <PublicHeader active="resources" />
 
-      <section className="pricing-hero info-hero">
-        <span className="section-eyebrow centered">Privacy</span>
-        <h1>Heldere privacybasis voor een AI telefoonassistent</h1>
-        <p>
-          Dit overzicht helpt je om het product transparant te presenteren. Het vervangt geen juridisch advies, maar zet wel de juiste basis voor een professionele launch.
-        </p>
-      </section>
+      <main className="belliq-main pb-24">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-12 sm:mb-16 text-center">
+          <span className="inline-flex items-center px-4 py-1.5 rounded-full bg-secondary-container text-on-secondary-container text-xs font-bold uppercase tracking-widest mb-5">
+            Privacy
+          </span>
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight font-headline mb-5">
+            Privacy duidelijk en
+            <span className="text-primary"> begrijpelijk</span>
+          </h1>
+          <p className="text-on-surface-variant text-lg max-w-3xl mx-auto leading-relaxed">
+            We houden je privacypagina kort, helder en praktisch. Zo weet elke klant meteen welke gegevens nodig zijn,
+            waarom dat zo is en welke controle je zelf houdt.
+          </p>
+          <p className="text-sm text-slate-500 mt-4">Laatst bijgewerkt: 19 april 2026</p>
+        </section>
 
-      <section className="legal-grid">
-        {privacyCards.map((card) => {
-          const Icon = card.icon;
-
-          return (
-            <article key={card.title} className="glass-panel legal-card">
-              <h3>
-                <Icon size={18} /> {card.title}
-              </h3>
-              <ul>
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-16 sm:mb-20">
+          {privacyCards.map((card) => (
+            <article key={card.title} className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
+              <h2 className="text-xl sm:text-2xl font-bold font-headline mb-4">{card.title}</h2>
+              <ul className="space-y-3">
                 {card.items.map((item) => (
-                  <li key={item}>{item}</li>
+                  <li key={item} className="text-slate-600 leading-relaxed flex items-start gap-2">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
+                    <span>{item}</span>
+                  </li>
                 ))}
               </ul>
             </article>
-          );
-        })}
-      </section>
+          ))}
+        </section>
 
-      <section className="cta-panel glass-panel legal-note">
-        <div>
-          <span className="section-eyebrow">Belangrijke launch-opmerking</span>
-          <h2>Bij live calls moet je extra duidelijk zijn over opname, transcriptie en bewaartermijnen</h2>
-          <p className="panel-copy">
-            Zodra je echte telefonie activeert, is het verstandig om in je openingsscript en privacyverklaring duidelijk te maken of gesprekken worden opgenomen of getranscribeerd, waarom dat gebeurt en hoe lang die data wordt bewaard.
-          </p>
-          <ul className="check-list compact">
-            <li>Zet in je privacyverklaring de doelen, grondslag, ontvangers en bewaartermijn helder uiteen.</li>
-            <li>Leg met leveranciers verwerkersafspraken en subprocessorinformatie vast.</li>
-            <li>Maak per datastroom duidelijk of die nodig is voor service, training, support of facturatie.</li>
-          </ul>
-        </div>
-      </section>
+        <section className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="rounded-2xl bg-indigo-600 text-white p-8 sm:p-12">
+            <h2 className="text-2xl sm:text-3xl font-bold font-headline mb-4">Belangrijk voor live belverkeer</h2>
+            <p className="text-indigo-100 leading-relaxed mb-6 max-w-3xl">
+              Als je live telefonie gebruikt, maak dan expliciet in je privacytekst duidelijk of gesprekken worden
+              opgenomen of getranscribeerd, wat het doel is en hoe lang gegevens bewaard blijven.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => navigate('/compliance')}
+                className="bg-white text-indigo-700 px-6 py-3 rounded-xl font-semibold hover:brightness-95 transition"
+              >
+                Bekijk compliance
+              </button>
+              <button
+                onClick={() => navigate('/contact')}
+                className="bg-indigo-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-400 transition"
+              >
+                Neem contact op
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
 
       <PublicFooter />
     </div>
