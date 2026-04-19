@@ -72,6 +72,7 @@ const AuthPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(initialUrlError);
@@ -299,7 +300,20 @@ const AuthPage = () => {
           </label>
 
           <label className="auth-field">
-            <span>Password</span>
+            <div className="auth-field-head">
+              <span>Password</span>
+              {isLogin && (
+                <button
+                  type="button"
+                  className="auth-forgot-link"
+                  onClick={() =>
+                    setNotice('Wachtwoord reset komt eraan. Gebruik voorlopig Google login of neem contact op.')
+                  }
+                >
+                  Forgot password?
+                </button>
+              )}
+            </div>
             <input
               type="password"
               placeholder="••••••••"
@@ -310,6 +324,17 @@ const AuthPage = () => {
             />
             {!isLogin && <small>Minimaal 6 tekens</small>}
           </label>
+
+          {isLogin && (
+            <label className="auth-remember-row">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <span>Remember me for 30 days</span>
+            </label>
+          )}
 
           <button
             className="auth-submit-btn"
@@ -331,10 +356,34 @@ const AuthPage = () => {
           <span className="material-symbols-outlined">arrow_back</span>
           Terug naar homepage
         </button>
+
+        <footer className="auth-bottom-links">
+          <button type="button" onClick={() => navigate('/privacy')}>Privacy Policy</button>
+          <button type="button" onClick={() => navigate('/terms')}>Terms of Service</button>
+          <button type="button" onClick={() => navigate('/compliance')}>Security</button>
+        </footer>
       </main>
+
+      <div className="auth-trust-widget">
+        <div className="auth-trust-avatar">
+          <img
+            src="https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=200&auto=format&fit=crop"
+            alt="Support Agent"
+          />
+        </div>
+        <div>
+          <p>Trusted by 2,000+ Teams</p>
+          <div className="auth-stars" aria-hidden="true">
+            <span className="material-symbols-outlined">star</span>
+            <span className="material-symbols-outlined">star</span>
+            <span className="material-symbols-outlined">star</span>
+            <span className="material-symbols-outlined">star</span>
+            <span className="material-symbols-outlined">star</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
 export default AuthPage;
-
