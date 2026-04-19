@@ -30,6 +30,7 @@ const PublicHeader = ({ active = 'features' }) => {
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
+
     if (mobileMenuOpen) {
       document.body.style.overflow = 'hidden';
     }
@@ -41,10 +42,10 @@ const PublicHeader = ({ active = 'features' }) => {
 
   return (
     <>
-      <header className="fixed top-0 w-full z-50 bg-[#f7f9fb]/70 backdrop-blur-xl shadow-sm shadow-indigo-500/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex justify-between items-center gap-3">
-          <button className="flex items-center" onClick={() => navigateTo('/')}>
-            <div className="text-xl sm:text-2xl font-bold tracking-tighter text-indigo-700">Belliq</div>
+      <header className="fixed top-0 w-full z-50 bg-[#f7f9fb]/60 backdrop-blur-xl shadow-sm shadow-indigo-500/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex justify-between items-center">
+          <button className="text-2xl font-bold tracking-tighter text-indigo-700" onClick={() => navigateTo('/')}>
+            Belliq
           </button>
 
           <nav className="hidden md:flex items-center gap-8 font-headline font-semibold tracking-tight text-sm">
@@ -63,36 +64,39 @@ const PublicHeader = ({ active = 'features' }) => {
             ))}
           </nav>
 
-          <div className="hidden md:flex items-center gap-4 shrink-0">
-            <button className="material-symbols-outlined text-slate-600 hover:text-indigo-600 transition-colors text-[24px]">
+          <div className="hidden md:flex items-center gap-4">
+            <button
+              type="button"
+              aria-label="Taal"
+              className="material-symbols-outlined text-slate-600 hover:text-indigo-600 transition-colors"
+            >
               language
             </button>
             <button
               onClick={() => navigateTo('/login')}
               className="bg-indigo-700 text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-indigo-500/20"
             >
-              Inloggen
+              Aan de slag
             </button>
           </div>
 
-          <div className="md:hidden flex items-center gap-2 shrink-0">
+          <div className="md:hidden flex items-center gap-2">
             <button
               onClick={() => navigateTo('/login')}
-              className="bg-indigo-700 text-white px-4 py-2 rounded-full text-sm font-semibold hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-indigo-500/20"
+              className="bg-indigo-700 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-lg shadow-indigo-500/20"
             >
-              Inloggen
+              Start
             </button>
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
               aria-label={mobileMenuOpen ? 'Menu sluiten' : 'Menu openen'}
-              className="h-10 w-10 rounded-full bg-white border border-slate-200 text-slate-700 shadow-sm grid place-items-center transition-colors hover:border-indigo-300 hover:text-indigo-700"
+              className="h-10 w-10 rounded-full bg-white border border-slate-200 text-slate-700 shadow-sm grid place-items-center"
             >
               <span className="material-symbols-outlined">{mobileMenuOpen ? 'close' : 'menu'}</span>
             </button>
           </div>
         </div>
-
         <div className="bg-gradient-to-b from-slate-200/50 to-transparent h-[1px]"></div>
       </header>
 
@@ -118,8 +122,8 @@ const PublicHeader = ({ active = 'features' }) => {
         >
           <div className="px-5 pt-5 pb-4 border-b border-slate-200/80">
             <div className="flex items-center justify-between">
-              <button className="flex items-center" onClick={() => navigateTo('/')}>
-                <span className="text-lg font-bold text-indigo-700">Belliq</span>
+              <button className="text-lg font-bold text-indigo-700" onClick={() => navigateTo('/')}>
+                Belliq
               </button>
               <button
                 type="button"
@@ -130,7 +134,6 @@ const PublicHeader = ({ active = 'features' }) => {
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <p className="mt-3 text-sm text-slate-500">Navigeer snel door alle pagina&apos;s.</p>
           </div>
 
           <nav className="p-4 space-y-2">
@@ -153,9 +156,9 @@ const PublicHeader = ({ active = 'features' }) => {
           <div className="p-4 mt-auto border-t border-slate-200/80">
             <button
               onClick={() => navigateTo('/login')}
-              className="w-full bg-indigo-700 text-white px-5 py-3 rounded-xl text-sm font-semibold hover:brightness-110 transition-all shadow-lg shadow-indigo-500/20"
+              className="w-full bg-indigo-700 text-white px-5 py-3 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20"
             >
-              Inloggen
+              Aan de slag
             </button>
           </div>
         </aside>
