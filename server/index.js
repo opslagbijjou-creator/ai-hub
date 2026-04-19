@@ -919,6 +919,10 @@ route('post', '/api/onboarding/save', requireAuth, async (req, res) => {
   return handleOnboardingSave(req, res);
 });
 
+route('post', '/api/onboarding/step-save', requireAuth, async (req, res) => {
+  return handleOnboardingSave(req, res);
+});
+
 route('post', '/api/assistant/config', requireAuth, async (req, res) => {
   const legacyPayload = {
     ...req.body,

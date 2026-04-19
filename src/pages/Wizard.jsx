@@ -339,17 +339,27 @@ const Wizard = () => {
       setSaveError('');
 
       try {
-        const response = await authFetch('/api/onboarding/step-save', {
+        const requestBody = JSON.stringify(
+          buildPayload({
+            setupStep: step,
+            setupCompleted: Boolean(options.setupCompleted)
+          })
+        );
+
+        let response = await authFetch('/api/onboarding/step-save', {
           method: 'POST',
-          body: JSON.stringify(
-            buildPayload({
-              setupStep: step,
-              setupCompleted: Boolean(options.setupCompleted)
-            })
-          )
+          body: requestBody
         });
 
-        const payload = await response.json();
+        let payload = await response.json().catch(() => ({}));
+        if (!response.ok && response.status === 404) {
+          response = await authFetch('/api/onboarding/save', {
+            method: 'POST',
+            body: requestBody
+          });
+          payload = await response.json().catch(() => ({}));
+        }
+
         if (!response.ok) {
           throw new Error(payload?.error || 'Opslaan van stap mislukt.');
         }
