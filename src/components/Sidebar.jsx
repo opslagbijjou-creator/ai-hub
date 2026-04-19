@@ -1,86 +1,72 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { BookOpen, Grid, LayoutDashboard, LogOut, Mic, Phone, ShieldCheck, Settings } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import './Sidebar.css';
 
 const Sidebar = () => {
   const { signOut, user, isAdmin } = useAppContext();
 
+  const navItems = [
+    { to: '/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
+    { to: '/dashboard/call-studio', label: 'Call Studio', icon: 'call' },
+    { to: '/dashboard/knowledge-base', label: 'Knowledge Base', icon: 'menu_book' },
+    { to: '/setup-wizard', label: 'Setup Wizard', icon: 'auto_fix' },
+    { to: '/dashboard/integrations', label: 'Integrations', icon: 'shopping_cart' }
+  ];
+
   return (
-    <aside className="sidebar glass-panel">
+    <aside className="sidebar">
       <div className="sidebar-header">
-        <span className="font-heading logo-text">Belliq</span>
+        <div className="sidebar-logo-icon">
+          <span className="material-symbols-outlined">cloud_done</span>
+        </div>
+        <div>
+          <span className="font-heading logo-text">Belliq</span>
+          <p className="sidebar-subtitle">AI Call Intelligence</p>
+        </div>
       </div>
 
       <div className="sidebar-nav">
         <div className="nav-section">
-          <p className="nav-label">Algemeen</p>
-          <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
-            <LayoutDashboard size={20} />
-            <span>Overzicht</span>
-          </NavLink>
-          <NavLink to="/dashboard/catalog" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
-            <Grid size={20} />
-            <span>Apps</span>
-          </NavLink>
-        </div>
-
-        <div className="nav-section">
-          <p className="nav-label">AI Assistent</p>
-          <NavLink to="/setup-wizard" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
-            <Phone size={20} />
-            <span>Setup wizard</span>
-          </NavLink>
-          <NavLink to="/dashboard/call-studio" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
-            <Mic size={20} />
-            <span>Call Studio</span>
-          </NavLink>
-        </div>
-
-        <div className="nav-section">
-          <p className="nav-label">Instellingen</p>
-          <NavLink
-            to="/dashboard/knowledge-base"
-            className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-          >
-            <BookOpen size={20} />
-            <span>Kennisbank</span>
-          </NavLink>
-          <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
-            <Settings size={20} />
-            <span>Account</span>
-          </NavLink>
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={Boolean(item.end)}
+              className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+            >
+              <span className="material-symbols-outlined">{item.icon}</span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
         </div>
 
         {isAdmin && (
           <div className="nav-section">
             <p className="nav-label">Admin</p>
             <NavLink to="/dashboard/admin" className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}>
-              <ShieldCheck size={20} />
+              <span className="material-symbols-outlined">shield</span>
               <span>Admin Console</span>
             </NavLink>
           </div>
         )}
       </div>
 
-      <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div className="sidebar-upgrade">
+        <p className="upgrade-title">Upgrade to Pro</p>
+        <p className="upgrade-copy">Unlock advanced AI voice models and unlimited calls.</p>
+        <button className="upgrade-btn" type="button">Upgrade</button>
+      </div>
+
+      <div className="sidebar-footer">
         {user && (
-          <div
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.75rem',
-              color: 'var(--text-muted)',
-              borderTop: '1px solid var(--glass-border)',
-              marginBottom: '0.25rem',
-              paddingTop: '1rem'
-            }}
-          >
+          <div className="sidebar-user">
             {user.email}
             {isAdmin ? ' · admin' : ''}
           </div>
         )}
-        <button className="nav-item logout-btn" style={{ justifyContent: 'flex-start' }} onClick={signOut}>
+        <button className="nav-item logout-btn" style={{ justifyContent: 'flex-start' }} onClick={signOut} type="button">
           <LogOut size={20} />
           <span>Uitloggen</span>
         </button>
