@@ -11,7 +11,7 @@ import {
   UserRound
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 import { useAppContext } from '../context/AppContext';
 
 const SummaryCard = ({ icon, label, value, tone = 'default' }) => (
@@ -71,7 +71,7 @@ const AdminConsole = () => {
       headers['Content-Type'] = 'application/json';
     }
 
-    return fetch(apiUrl(path), {
+    return apiFetch(path, {
       ...options,
       headers
     });

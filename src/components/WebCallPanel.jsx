@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Brain, Loader2, Mic, MicOff, PhoneCall, Send, Volume2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 import { normalizeUiError } from '../lib/normalizeError';
 import './WebCallPanel.css';
 
@@ -99,7 +99,7 @@ const WebCallPanel = ({
           throw new Error('Geen actieve sessie gevonden. Log opnieuw in.');
         }
 
-        const response = await fetch(apiUrl('/api/webcall/turn'), {
+        const response = await apiFetch('/api/webcall/turn', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

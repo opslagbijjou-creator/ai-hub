@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Phone, ReceiptText, RefreshCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { apiConfigMessage, apiUrl, hasApiBaseConfig } from '../lib/api';
+import { apiConfigMessage, apiFetch, hasApiBaseConfig } from '../lib/api';
 import { normalizeUiError } from '../lib/normalizeError';
 import WebCallPanel from '../components/WebCallPanel';
 import { useAppContext } from '../context/AppContext';
@@ -27,7 +27,7 @@ const CallStudio = () => {
         throw new Error('Geen actieve sessie.');
       }
 
-      const response = await fetch(apiUrl('/api/assistant/state'), {
+      const response = await apiFetch('/api/assistant/state', {
         headers: {
           Authorization: `Bearer ${session.access_token}`
         }
@@ -60,7 +60,7 @@ const CallStudio = () => {
 
       const planKey = assistantState?.assistant?.desired_plan || 'plan_150';
 
-      const response = await fetch(apiUrl('/api/invoice/request'), {
+      const response = await apiFetch('/api/invoice/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

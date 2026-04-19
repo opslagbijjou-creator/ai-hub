@@ -2,7 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { supabase } from './lib/supabase';
-import { apiUrl } from './lib/api';
+import { apiFetch } from './lib/api';
 import './App.css';
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -108,7 +108,7 @@ function AppRoutes() {
           return;
         }
 
-        const response = await fetch(apiUrl('/api/assistant/state'), {
+        const response = await apiFetch('/api/assistant/state', {
           headers: {
             Authorization: `Bearer ${token}`
           }

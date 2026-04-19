@@ -24,7 +24,7 @@ import Sidebar from '../components/Sidebar';
 import DashboardTopbar from '../components/DashboardTopbar';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 import { normalizeUiError } from '../lib/normalizeError';
 import CallStudio from './CallStudio';
 import AdminConsole from './AdminConsole';
@@ -107,7 +107,7 @@ const SetupHome = () => {
       headers['Content-Type'] = 'application/json';
     }
 
-    return fetch(apiUrl(path), {
+    return apiFetch(path, {
       ...options,
       headers
     });
@@ -485,7 +485,7 @@ const Overview = () => {
       headers['Content-Type'] = 'application/json';
     }
 
-    return fetch(apiUrl(path), {
+    return apiFetch(path, {
       ...options,
       headers
     });

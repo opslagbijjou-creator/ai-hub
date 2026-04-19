@@ -11,7 +11,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 import { normalizeUiError } from '../lib/normalizeError';
 import { useAppContext } from '../context/AppContext';
 import { getPlanByKey } from '../lib/pricing';
@@ -188,7 +188,7 @@ const Wizard = () => {
       headers['Content-Type'] = 'application/json';
     }
 
-    return fetch(apiUrl(path), {
+    return apiFetch(path, {
       ...options,
       headers
     });
@@ -225,7 +225,7 @@ const Wizard = () => {
     try {
       const loadPublicOptions = async (path, fallback) => {
         try {
-          const response = await fetch(apiUrl(path));
+          const response = await apiFetch(path);
           if (!response.ok) return fallback;
           const data = await response.json().catch(() => fallback);
           return Array.isArray(data) && data.length ? data : fallback;
