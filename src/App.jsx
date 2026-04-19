@@ -57,6 +57,7 @@ const ScrollToTop = () => {
 
 function AppRoutes() {
   const { user, authLoading, setIsAdmin } = useAppContext();
+  const userId = user?.id || null;
   const [onboardingState, setOnboardingState] = React.useState({
     loading: false,
     checked: false,
@@ -68,7 +69,7 @@ function AppRoutes() {
     let cancelled = false;
 
     const checkOnboarding = async () => {
-      if (!user) {
+      if (!userId) {
         if (!cancelled) {
           setIsAdmin(false);
           setOnboardingState({
@@ -84,8 +85,10 @@ function AppRoutes() {
       if (!cancelled) {
         setOnboardingState((prev) => ({
           ...prev,
-          loading: true,
-          checked: false
+          // Keep checked=true once initial bootstrap finished to avoid fullscreen flicker
+          // during background refreshes (e.g. token refresh or wizard autosaves).
+          loading: prev.checked ? false : true,
+          checked: prev.checked
         }));
       }
 
@@ -98,12 +101,12 @@ function AppRoutes() {
         if (!token) {
           if (!cancelled) {
             setIsAdmin(false);
-            setOnboardingState({
+            setOnboardingState((prev) => ({
               loading: false,
               checked: true,
-              completed: false,
-              step: 1
-            });
+              completed: prev.checked ? prev.completed : false,
+              step: prev.checked ? prev.step : 1
+            }));
           }
           return;
         }
@@ -138,12 +141,12 @@ function AppRoutes() {
       } catch {
         if (!cancelled) {
           setIsAdmin(false);
-          setOnboardingState({
+          setOnboardingState((prev) => ({
             loading: false,
             checked: true,
-            completed: false,
-            step: 1
-          });
+            completed: prev.checked ? prev.completed : false,
+            step: prev.checked ? prev.step : 1
+          }));
         }
       }
     };
@@ -163,7 +166,7 @@ function AppRoutes() {
         window.removeEventListener('belliq:onboarding-updated', handleOnboardingUpdated);
       }
     };
-  }, [authLoading, setIsAdmin, user]);
+  }, [authLoading, setIsAdmin, userId]);
 
   const onboardingLoading = Boolean(user) && (onboardingState.loading || !onboardingState.checked);
 

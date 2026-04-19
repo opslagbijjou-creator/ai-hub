@@ -16,6 +16,19 @@ export const AppProvider = ({ children }) => {
     files: []
   });
 
+  const setStableUser = (nextUser) => {
+    setUser((prevUser) => {
+      const prevId = prevUser?.id || null;
+      const nextId = nextUser?.id || null;
+
+      if (prevId === nextId) {
+        return prevUser;
+      }
+
+      return nextUser ?? null;
+    });
+  };
+
   const parseOAuthHashSession = () => {
     if (typeof window === 'undefined') return null;
     const hash = window.location.hash.replace(/^#/, '');
@@ -73,12 +86,12 @@ export const AppProvider = ({ children }) => {
 
         const { data: { session } } = await supabase.auth.getSession();
         if (mounted) {
-          setUser(session?.user ?? null);
+          setStableUser(session?.user ?? null);
           if (!session?.user) setIsAdmin(false);
         }
       } catch {
         if (mounted) {
-          setUser(null);
+          setStableUser(null);
           setIsAdmin(false);
         }
       } finally {
@@ -90,7 +103,7 @@ export const AppProvider = ({ children }) => {
 
     // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
+      setStableUser(session?.user ?? null);
       if (!session?.user) setIsAdmin(false);
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         clearOAuthUrlArtifacts();

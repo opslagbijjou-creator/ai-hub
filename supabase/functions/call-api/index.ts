@@ -1357,7 +1357,7 @@ function buildWizardChecklist(params: {
     ? faqs.filter((entry) => safeText(entry?.question) && safeText(entry?.answer)).length
     : 0;
   const instructionsDone = Boolean(
-    safeText(profile?.role_description) && safeText(profile?.handoff_rules) && faqDoneCount > 0,
+    safeText(profile?.role_description) && safeText(profile?.handoff_rules),
   );
   const availabilitySchedule = channelSettings?.availability_schedule &&
       typeof channelSettings.availability_schedule === "object" &&
@@ -1406,8 +1406,10 @@ function buildWizardChecklist(params: {
       label: "Instructies",
       done: instructionsDone,
       description: instructionsDone
-        ? `Rol, handoff en ${faqDoneCount} FAQ${faqDoneCount === 1 ? "" : "'s"} zijn ingesteld.`
-        : "Voeg rolregels en FAQ toe.",
+        ? faqDoneCount > 0
+          ? `Rol en handoff zijn ingesteld. ${faqDoneCount} FAQ${faqDoneCount === 1 ? "" : "'s"} toegevoegd.`
+          : "Rol en handoff zijn ingesteld. FAQ is optioneel."
+        : "Vul rol en handoff-regels in. FAQ is optioneel.",
     },
     {
       key: "bereikbaarheid",

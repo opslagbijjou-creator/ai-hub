@@ -78,21 +78,60 @@ const DEFAULT_SCHEDULE = {
 };
 
 const DEFAULT_SMS_TEMPLATE = {
-  title: 'Bevestiging',
-  trigger: 'Na gesprek',
-  text: 'Bedankt voor je telefoontje. We nemen snel contact met je op.'
+  title: '',
+  trigger: '',
+  text: ''
 };
 
 const DEFAULT_WHATSAPP_TEMPLATE = {
-  title: 'Samenvatting',
-  trigger: 'Bij terugbelverzoek',
-  text: 'Dankjewel voor je bericht. We hebben je verzoek ontvangen en komen erop terug.'
+  title: '',
+  trigger: '',
+  text: ''
 };
 
 const DEFAULT_FAQ = {
-  question: 'Wat zijn jullie openingstijden?',
-  answer: 'Wij zijn op werkdagen bereikbaar tussen 09:00 en 17:00.'
+  question: '',
+  answer: ''
 };
+
+const normalizeTemplateEntry = (template) => ({
+  title: String(template?.title || ''),
+  trigger: String(template?.trigger || ''),
+  text: String(template?.text || '')
+});
+
+const hasTemplateContent = (template) =>
+  Boolean(String(template?.title || '').trim() || String(template?.trigger || '').trim() || String(template?.text || '').trim());
+
+const normalizeTemplateListForUi = (templates, fallback = []) => {
+  if (!Array.isArray(templates)) return fallback;
+  const normalized = templates.map(normalizeTemplateEntry).filter(hasTemplateContent).slice(0, 12);
+  return normalized;
+};
+
+const normalizeTemplateListForPayload = (templates) =>
+  normalizeTemplateListForUi(templates, []).map((template) => ({
+    title: template.title.trim(),
+    trigger: template.trigger.trim(),
+    text: template.text.trim()
+  }));
+
+const normalizeFaqListForUi = (faqItems, fallback = []) => {
+  if (!Array.isArray(faqItems)) return fallback;
+  return faqItems
+    .map((item) => ({
+      question: String(item?.question || ''),
+      answer: String(item?.answer || '')
+    }))
+    .filter((item) => item.question.trim() || item.answer.trim())
+    .slice(0, 20);
+};
+
+const normalizeFaqListForPayload = (faqItems) =>
+  normalizeFaqListForUi(faqItems, []).map((item) => ({
+    question: item.question.trim(),
+    answer: item.answer.trim()
+  }));
 
 const parseAssistantNameFromUrl = (url, fallback = 'Mijn assistent') => {
   try {
@@ -119,8 +158,6 @@ const normalizeSchedule = (value) => {
   }, {});
 };
 
-const hasAtLeastOneFaq = (faqItems) => faqItems.some((item) => item.question.trim() && item.answer.trim());
-
 const getVoiceSubtitle = (voice) => {
   if (voice?.description) return voice.description;
 
@@ -141,6 +178,7 @@ const Wizard = () => {
   const [trialLoading, setTrialLoading] = useState(false);
   const [trialMessage, setTrialMessage] = useState('');
   const [voices, setVoices] = useState(FALLBACK_VOICES);
+  const [voiceWarning, setVoiceWarning] = useState('');
   const [avatars, setAvatars] = useState(FALLBACK_AVATARS);
   const [numberOptions, setNumberOptions] = useState(FALLBACK_NUMBERS);
   const [assistantState, setAssistantState] = useState(null);
@@ -148,6 +186,9 @@ const Wizard = () => {
   const [aiPlan, setAiPlan] = useState(null);
   const [aiPlanStatus, setAiPlanStatus] = useState('idle');
   const [aiPlanMessage, setAiPlanMessage] = useState('');
+  const [showAllFaqs, setShowAllFaqs] = useState(false);
+  const [showAdvancedIntake, setShowAdvancedIntake] = useState(false);
+  const [showAdvancedChannels, setShowAdvancedChannels] = useState(false);
 
   const [form, setForm] = useState({
     assistantName: 'Mijn assistent',
@@ -158,8 +199,8 @@ const Wizard = () => {
     secondaryLanguage: '',
     smsEnabled: false,
     whatsappEnabled: false,
-    smsTemplates: [DEFAULT_SMS_TEMPLATE],
-    whatsappTemplates: [DEFAULT_WHATSAPP_TEMPLATE],
+    smsTemplates: [],
+    whatsappTemplates: [],
     voiceKey: FALLBACK_VOICES[0].key,
     greeting: '',
     toneOfVoice: 'vriendelijk en professioneel',
@@ -237,6 +278,26 @@ const Wizard = () => {
         }
       };
 
+      const loadVoiceOptions = async () => {
+        const options = await loadPublicOptions('/api/voices/options', FALLBACK_VOICES);
+        let warning = '';
+
+        try {
+          const debugResponse = await apiFetch('/api/voices/options-debug');
+          if (debugResponse.ok) {
+            const debugPayload = await debugResponse.json().catch(() => ({}));
+            const reason = String(debugPayload?.reason || '');
+            if (debugPayload?.source === 'fallback' && reason.includes('invalid_api_key')) {
+              warning = 'ElevenLabs API key is ongeldig in Supabase secrets. Nu zie je fallback-stemmen.';
+            }
+          }
+        } catch {
+          // Stil laten; opties laden al via fallback.
+        }
+
+        return { options, warning };
+      };
+
       const loadNumberOptions = async () => {
         try {
           const response = await authFetch('/api/numbers/options');
@@ -248,12 +309,15 @@ const Wizard = () => {
         }
       };
 
-      const [statePayload, voiceList, avatarList, numberData] = await Promise.all([
+      const [statePayload, voiceResult, avatarList, numberData] = await Promise.all([
         refreshState(),
-        loadPublicOptions('/api/voices/options', FALLBACK_VOICES),
+        loadVoiceOptions(),
         loadPublicOptions('/api/avatars/options', FALLBACK_AVATARS),
         loadNumberOptions()
       ]);
+      const voiceList = Array.isArray(voiceResult?.options) && voiceResult.options.length
+        ? voiceResult.options
+        : FALLBACK_VOICES;
 
       const selectedStateNumber = statePayload?.number?.e164
         ? {
@@ -278,13 +342,16 @@ const Wizard = () => {
         }, []);
 
       setVoices(voiceList);
+      setVoiceWarning(voiceResult?.warning || '');
       setAvatars(avatarList);
       setNumberOptions(normalizedNumbers.length ? normalizedNumbers : FALLBACK_NUMBERS);
 
       const profile = statePayload?.profile || {};
       const channels = statePayload?.channels || {};
       const wizard = statePayload?.wizard || {};
-      const faqItems = Array.isArray(statePayload?.faqItems) ? statePayload.faqItems : [];
+      const faqItems = normalizeFaqListForUi(statePayload?.faqItems, []);
+      const smsTemplates = normalizeTemplateListForUi(channels?.smsTemplates, []);
+      const whatsappTemplates = normalizeTemplateListForUi(channels?.whatsappTemplates, []);
       const persistedAiPlan =
         statePayload?.aiPlan && typeof statePayload.aiPlan === 'object'
           ? statePayload.aiPlan
@@ -311,22 +378,14 @@ const Wizard = () => {
         secondaryLanguage: profile?.secondary_language || '',
         smsEnabled: Boolean(channels?.smsEnabled),
         whatsappEnabled: Boolean(channels?.whatsappEnabled),
-        smsTemplates:
-          Array.isArray(channels?.smsTemplates) && channels.smsTemplates.length
-            ? channels.smsTemplates
-            : [DEFAULT_SMS_TEMPLATE],
-        whatsappTemplates:
-          Array.isArray(channels?.whatsappTemplates) && channels.whatsappTemplates.length
-            ? channels.whatsappTemplates
-            : [DEFAULT_WHATSAPP_TEMPLATE],
+        smsTemplates,
+        whatsappTemplates,
         voiceKey: statePayload?.voice?.voice_key || voiceList[0].key,
         greeting: profile?.greeting || '',
         toneOfVoice: profile?.tone_of_voice || 'vriendelijk en professioneel',
         roleDescription: profile?.role_description || '',
         handoffRules: profile?.handoff_rules || '',
-        faqItems: faqItems.length
-          ? faqItems.map((item) => ({ question: item.question || '', answer: item.answer || '' }))
-          : [DEFAULT_FAQ],
+        faqItems: faqItems.length ? faqItems : [DEFAULT_FAQ],
         availabilityMode: channels?.availabilityMode || 'always',
         availabilitySchedule: normalizeSchedule(channels?.availabilitySchedule),
         numberE164: statePayload?.number?.e164 || '',
@@ -368,7 +427,7 @@ const Wizard = () => {
       1: Boolean(form.assistantName.trim() && form.avatarKey),
       2: Boolean(form.websiteUrl.trim() && form.primaryGoal.trim()),
       3: Boolean(form.voiceKey),
-      4: Boolean(form.roleDescription.trim() && form.handoffRules.trim() && hasAtLeastOneFaq(form.faqItems)),
+      4: Boolean(form.roleDescription.trim() && form.handoffRules.trim()),
       5: Boolean(form.numberE164 && (form.availabilityMode === 'always' || hasSchedule))
     };
   }, [form]);
@@ -383,35 +442,75 @@ const Wizard = () => {
     ];
   }, [validationByStep]);
 
-  const buildPayload = useCallback(
-    (overrides = {}) => ({
-      assistantName: form.assistantName,
-      companyName: form.companyName || form.assistantName,
-      avatarKey: form.avatarKey,
-      websiteUrl: form.websiteUrl,
-      primaryGoal: form.primaryGoal,
-      goals: form.primaryGoal,
-      secondaryLanguage: form.secondaryLanguage,
-      smsEnabled: form.smsEnabled,
-      whatsappEnabled: form.whatsappEnabled,
-      callEnabled: true,
-      smsTemplates: form.smsTemplates,
-      whatsappTemplates: form.whatsappTemplates,
-      voiceKey: form.voiceKey,
-      greeting:
-        form.greeting ||
-        `Hoi! Je spreekt met ${form.assistantName} van ${form.companyName || 'ons team'}. Waarmee kan ik helpen?`,
-      toneOfVoice: form.toneOfVoice,
-      roleDescription: form.roleDescription,
-      handoffRules: form.handoffRules,
-      faqItems: form.faqItems,
-      availabilityMode: form.availabilityMode,
-      availabilitySchedule: form.availabilitySchedule,
-      numberE164: form.numberE164,
-      numberLabel: selectedNumberOption?.label || form.numberE164,
-      planKey: form.planKey,
-      ...overrides
-    }),
+  const buildPayloadForStep = useCallback(
+    (step, overrides = {}) => {
+      const identityPayload = {
+        assistantName: form.assistantName,
+        companyName: form.companyName || form.assistantName,
+        avatarKey: form.avatarKey
+      };
+      const basePayload = {
+        ...identityPayload,
+        planKey: form.planKey,
+        setupStep: step,
+        setupCompleted: Boolean(overrides.setupCompleted)
+      };
+
+      if (step === 1) {
+        return {
+          ...basePayload,
+          ...overrides
+        };
+      }
+
+      if (step === 2) {
+        return {
+          ...basePayload,
+          websiteUrl: form.websiteUrl,
+          primaryGoal: form.primaryGoal,
+          goals: form.primaryGoal,
+          ...overrides
+        };
+      }
+
+      if (step === 3) {
+        return {
+          ...basePayload,
+          voiceKey: form.voiceKey,
+          greeting:
+            form.greeting ||
+            `Hoi! Je spreekt met ${form.assistantName} van ${form.companyName || 'ons team'}. Waarmee kan ik helpen?`,
+          toneOfVoice: form.toneOfVoice,
+          ...overrides
+        };
+      }
+
+      if (step === 4) {
+        return {
+          ...basePayload,
+          roleDescription: form.roleDescription,
+          handoffRules: form.handoffRules,
+          faqItems: normalizeFaqListForPayload(form.faqItems),
+          secondaryLanguage: form.secondaryLanguage,
+          smsEnabled: form.smsEnabled,
+          whatsappEnabled: form.whatsappEnabled,
+          callEnabled: true,
+          smsTemplates: normalizeTemplateListForPayload(form.smsTemplates),
+          whatsappTemplates: normalizeTemplateListForPayload(form.whatsappTemplates),
+          ...overrides
+        };
+      }
+
+      return {
+        ...basePayload,
+        numberE164: form.numberE164,
+        numberLabel: selectedNumberOption?.label || form.numberE164,
+        availabilityMode: form.availabilityMode,
+        availabilitySchedule: form.availabilitySchedule,
+        callEnabled: true,
+        ...overrides
+      };
+    },
     [form, selectedNumberOption]
   );
 
@@ -421,12 +520,7 @@ const Wizard = () => {
       setSaveError('');
 
       try {
-        const requestBody = JSON.stringify(
-          buildPayload({
-            setupStep: step,
-            setupCompleted: Boolean(options.setupCompleted)
-          })
-        );
+        const requestBody = JSON.stringify(buildPayloadForStep(step, options));
 
         let response = await authFetch('/api/onboarding/step-save', {
           method: 'POST',
@@ -451,7 +545,7 @@ const Wizard = () => {
           setAiPlan(payload.aiPlan);
           setAiPlanStatus(payload?.aiPlanStatus || 'ready');
         }
-        if (typeof window !== 'undefined') {
+        if (options.notifyOnboarding !== false && typeof window !== 'undefined') {
           window.dispatchEvent(new Event('belliq:onboarding-updated'));
         }
         setAssistantConfig({
@@ -472,7 +566,7 @@ const Wizard = () => {
         setSaving(false);
       }
     },
-    [authFetch, buildPayload, form.companyName, form.numberE164, form.voiceKey, setAssistantConfig, voices]
+    [authFetch, buildPayloadForStep, form.companyName, form.numberE164, form.voiceKey, setAssistantConfig, voices]
   );
 
   const handleAiSuggest = async () => {
@@ -505,13 +599,14 @@ const Wizard = () => {
         primaryGoal: suggestions?.primaryGoal || prev.primaryGoal,
         faqItems:
           Array.isArray(suggestions?.faqItems) && suggestions.faqItems.length
-            ? suggestions.faqItems
+            ? normalizeFaqListForUi(suggestions.faqItems, prev.faqItems).slice(0, 3)
             : prev.faqItems,
         smsTemplates:
           Array.isArray(suggestions?.smsTemplates) && suggestions.smsTemplates.length
-            ? suggestions.smsTemplates
+            ? normalizeTemplateListForUi(suggestions.smsTemplates, prev.smsTemplates).slice(0, 3)
             : prev.smsTemplates
       }));
+      setShowAllFaqs(false);
     } catch (error) {
       setSaveError(normalizeUiError(error, 'AI suggestie mislukt.'));
     } finally {
@@ -570,7 +665,7 @@ const Wizard = () => {
     if (!validationByStep[currentStep]) return;
 
     if (currentStep < 5) {
-      const result = await saveStep(currentStep, { setupCompleted: false });
+      const result = await saveStep(currentStep, { setupCompleted: false, notifyOnboarding: false });
       if (result) {
         if (currentStep >= 2) {
           void refreshAiPlan({ silent: true });
@@ -580,7 +675,7 @@ const Wizard = () => {
       return;
     }
 
-    const result = await saveStep(5, { setupCompleted: true });
+    const result = await saveStep(5, { setupCompleted: true, notifyOnboarding: true });
     if (!result) return;
     void refreshAiPlan({ silent: true });
 
@@ -609,7 +704,7 @@ const Wizard = () => {
   const addTemplate = (type) => {
     setForm((prev) => {
       const key = type === 'sms' ? 'smsTemplates' : 'whatsappTemplates';
-      const template = type === 'sms' ? DEFAULT_SMS_TEMPLATE : DEFAULT_WHATSAPP_TEMPLATE;
+      const template = type === 'sms' ? { ...DEFAULT_SMS_TEMPLATE } : { ...DEFAULT_WHATSAPP_TEMPLATE };
       return { ...prev, [key]: [...prev[key], template] };
     });
   };
@@ -618,7 +713,7 @@ const Wizard = () => {
     setForm((prev) => {
       const key = type === 'sms' ? 'smsTemplates' : 'whatsappTemplates';
       const next = prev[key].filter((_, templateIndex) => templateIndex !== index);
-      return { ...prev, [key]: next.length ? next : [type === 'sms' ? DEFAULT_SMS_TEMPLATE : DEFAULT_WHATSAPP_TEMPLATE] };
+      return { ...prev, [key]: next };
     });
   };
 
@@ -631,6 +726,7 @@ const Wizard = () => {
   };
 
   const addFaq = () => {
+    setShowAllFaqs(true);
     setForm((prev) => ({
       ...prev,
       faqItems: [...prev.faqItems, { question: '', answer: '' }]
@@ -793,6 +889,17 @@ const Wizard = () => {
             />
           </label>
 
+          <label className="wizard-field">
+            <span>Bedrijfsnaam</span>
+            <input
+              type="text"
+              className="wizard-input"
+              value={form.companyName}
+              onChange={(event) => setForm((prev) => ({ ...prev, companyName: event.target.value }))}
+              placeholder="Bijv. Belliq"
+            />
+          </label>
+
           <div className="wizard-field">
             <span>Kies een avatar</span>
             <div className="avatar-grid">
@@ -863,117 +970,10 @@ const Wizard = () => {
             />
           </label>
 
-          <div className="wizard-channel-card">
-            <div className="channel-head">
-              <strong>SMS versturen</strong>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={form.smsEnabled}
-                  onChange={(event) => setForm((prev) => ({ ...prev, smsEnabled: event.target.checked }))}
-                />
-                <span />
-              </label>
-            </div>
-            <p>Korte bevestiging na gesprek of terugbelverzoek.</p>
-
-            {form.smsEnabled && (
-              <div className="template-list">
-                {form.smsTemplates.map((template, index) => (
-                  <div key={`sms-${index}`} className="template-card">
-                    <input
-                      className="wizard-input"
-                      value={template.title || ''}
-                      placeholder="Titel"
-                      onChange={(event) => updateTemplate('sms', index, 'title', event.target.value)}
-                    />
-                    <input
-                      className="wizard-input"
-                      value={template.trigger || ''}
-                      placeholder="Wanneer stuur je dit?"
-                      onChange={(event) => updateTemplate('sms', index, 'trigger', event.target.value)}
-                    />
-                    <textarea
-                      rows="2"
-                      className="wizard-input"
-                      value={template.text || ''}
-                      placeholder="Berichttekst"
-                      onChange={(event) => updateTemplate('sms', index, 'text', event.target.value)}
-                    />
-                    <button className="text-link" type="button" onClick={() => removeTemplate('sms', index)}>
-                      Verwijderen
-                    </button>
-                  </div>
-                ))}
-                <button className="btn-secondary" type="button" onClick={() => addTemplate('sms')}>
-                  SMS toevoegen
-                </button>
-              </div>
-            )}
+          <div className="wizard-plan-card">
+            <strong>Tip</strong>
+            <p>Kanaalinstellingen (SMS, WhatsApp, extra taal) staan in stap 4 onder geavanceerd.</p>
           </div>
-
-          <div className="wizard-channel-card">
-            <div className="channel-head">
-              <strong>WhatsApp follow-up</strong>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={form.whatsappEnabled}
-                  onChange={(event) => setForm((prev) => ({ ...prev, whatsappEnabled: event.target.checked }))}
-                />
-                <span />
-              </label>
-            </div>
-            <p>Basis-instelling: template opslaan (nog geen volledige inbox-automatisering).</p>
-
-            {form.whatsappEnabled && (
-              <div className="template-list">
-                {form.whatsappTemplates.map((template, index) => (
-                  <div key={`wa-${index}`} className="template-card">
-                    <input
-                      className="wizard-input"
-                      value={template.title || ''}
-                      placeholder="Titel"
-                      onChange={(event) => updateTemplate('wa', index, 'title', event.target.value)}
-                    />
-                    <input
-                      className="wizard-input"
-                      value={template.trigger || ''}
-                      placeholder="Wanneer stuur je dit?"
-                      onChange={(event) => updateTemplate('wa', index, 'trigger', event.target.value)}
-                    />
-                    <textarea
-                      rows="2"
-                      className="wizard-input"
-                      value={template.text || ''}
-                      placeholder="Berichttekst"
-                      onChange={(event) => updateTemplate('wa', index, 'text', event.target.value)}
-                    />
-                    <button className="text-link" type="button" onClick={() => removeTemplate('wa', index)}>
-                      Verwijderen
-                    </button>
-                  </div>
-                ))}
-                <button className="btn-secondary" type="button" onClick={() => addTemplate('wa')}>
-                  WhatsApp template toevoegen
-                </button>
-              </div>
-            )}
-          </div>
-
-          <label className="wizard-field">
-            <span>Tweede taal (optioneel)</span>
-            <select
-              className="wizard-input"
-              value={form.secondaryLanguage}
-              onChange={(event) => setForm((prev) => ({ ...prev, secondaryLanguage: event.target.value }))}
-            >
-              <option value="">Geen tweede taal</option>
-              <option value="Engels">Engels</option>
-              <option value="Duits">Duits</option>
-              <option value="Frans">Frans</option>
-            </select>
-          </label>
         </div>
       );
     }
@@ -1064,9 +1064,21 @@ const Wizard = () => {
               placeholder="Bijv. professioneel, vriendelijk en kort"
             />
           </label>
+
+          {voiceWarning && (
+            <div className="wizard-plan-card">
+              <strong>Stemmenstatus</strong>
+              <p>{voiceWarning}</p>
+            </div>
+          )}
         </div>
       );
     }
+
+    const faqEntries = showAllFaqs
+      ? form.faqItems.map((faq, index) => ({ faq, index }))
+      : form.faqItems.slice(0, 1).map((faq, index) => ({ faq, index }));
+    const hiddenFaqCount = Math.max(0, form.faqItems.length - faqEntries.length);
 
     return (
       <div className="wizard-step-body">
@@ -1107,26 +1119,168 @@ const Wizard = () => {
             </label>
 
             <div className="wizard-field">
-              <span>Welke gegevens moet je assistent altijd opvragen?</span>
-              <div className="intake-field-grid">
-                {['Naam', 'Telefoonnummer', 'E-mail', 'Bedrijfsnaam', 'Vraag of probleem', 'Gewenste terugbeltijd'].map(
-                  (fieldName) => (
-                    <label key={fieldName} className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={form.intakeFields.includes(fieldName)}
-                        onChange={() => toggleIntakeField(fieldName)}
-                      />
-                      <span>{fieldName}</span>
-                    </label>
-                  )
-                )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
+                <span>Verplichte intake-velden (optioneel)</span>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowAdvancedIntake((prev) => !prev)}
+                  style={{ padding: '0.4rem 0.7rem' }}
+                >
+                  {showAdvancedIntake ? 'Verberg' : 'Toon'}
+                </button>
               </div>
+              {showAdvancedIntake && (
+                <div className="intake-field-grid">
+                  {['Naam', 'Telefoonnummer', 'E-mail', 'Bedrijfsnaam', 'Vraag of probleem', 'Gewenste terugbeltijd'].map(
+                    (fieldName) => (
+                      <label key={fieldName} className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={form.intakeFields.includes(fieldName)}
+                          onChange={() => toggleIntakeField(fieldName)}
+                        />
+                        <span>{fieldName}</span>
+                      </label>
+                    )
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="wizard-field">
-              <span>Veelgestelde vragen</span>
-              {form.faqItems.map((faq, index) => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
+                <span>Kanaalinstellingen (optioneel)</span>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowAdvancedChannels((prev) => !prev)}
+                  style={{ padding: '0.4rem 0.7rem' }}
+                >
+                  {showAdvancedChannels ? 'Verberg' : 'Toon'}
+                </button>
+              </div>
+
+              {showAdvancedChannels && (
+                <>
+                  <label className="wizard-field">
+                    <span>Tweede taal (optioneel)</span>
+                    <select
+                      className="wizard-input"
+                      value={form.secondaryLanguage}
+                      onChange={(event) => setForm((prev) => ({ ...prev, secondaryLanguage: event.target.value }))}
+                    >
+                      <option value="">Geen tweede taal</option>
+                      <option value="Engels">Engels</option>
+                      <option value="Duits">Duits</option>
+                      <option value="Frans">Frans</option>
+                    </select>
+                  </label>
+
+                  <div className="wizard-channel-card">
+                    <div className="channel-head">
+                      <strong>SMS follow-up</strong>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          checked={form.smsEnabled}
+                          onChange={(event) => setForm((prev) => ({ ...prev, smsEnabled: event.target.checked }))}
+                        />
+                        <span />
+                      </label>
+                    </div>
+                    <p>Optioneel: stuur een korte bevestiging na het gesprek.</p>
+
+                    {form.smsEnabled && (
+                      <div className="template-list">
+                        {form.smsTemplates.map((template, index) => (
+                          <div key={`sms-${index}`} className="template-card">
+                            <input
+                              className="wizard-input"
+                              value={template.title || ''}
+                              placeholder="Titel"
+                              onChange={(event) => updateTemplate('sms', index, 'title', event.target.value)}
+                            />
+                            <input
+                              className="wizard-input"
+                              value={template.trigger || ''}
+                              placeholder="Wanneer stuur je dit?"
+                              onChange={(event) => updateTemplate('sms', index, 'trigger', event.target.value)}
+                            />
+                            <textarea
+                              rows="2"
+                              className="wizard-input"
+                              value={template.text || ''}
+                              placeholder="Berichttekst"
+                              onChange={(event) => updateTemplate('sms', index, 'text', event.target.value)}
+                            />
+                            <button className="text-link" type="button" onClick={() => removeTemplate('sms', index)}>
+                              Verwijderen
+                            </button>
+                          </div>
+                        ))}
+                        <button className="btn-secondary" type="button" onClick={() => addTemplate('sms')}>
+                          SMS template toevoegen
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="wizard-channel-card">
+                    <div className="channel-head">
+                      <strong>WhatsApp follow-up</strong>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          checked={form.whatsappEnabled}
+                          onChange={(event) => setForm((prev) => ({ ...prev, whatsappEnabled: event.target.checked }))}
+                        />
+                        <span />
+                      </label>
+                    </div>
+                    <p>Optioneel: bewaar templates voor follow-up via WhatsApp.</p>
+
+                    {form.whatsappEnabled && (
+                      <div className="template-list">
+                        {form.whatsappTemplates.map((template, index) => (
+                          <div key={`wa-${index}`} className="template-card">
+                            <input
+                              className="wizard-input"
+                              value={template.title || ''}
+                              placeholder="Titel"
+                              onChange={(event) => updateTemplate('wa', index, 'title', event.target.value)}
+                            />
+                            <input
+                              className="wizard-input"
+                              value={template.trigger || ''}
+                              placeholder="Wanneer stuur je dit?"
+                              onChange={(event) => updateTemplate('wa', index, 'trigger', event.target.value)}
+                            />
+                            <textarea
+                              rows="2"
+                              className="wizard-input"
+                              value={template.text || ''}
+                              placeholder="Berichttekst"
+                              onChange={(event) => updateTemplate('wa', index, 'text', event.target.value)}
+                            />
+                            <button className="text-link" type="button" onClick={() => removeTemplate('wa', index)}>
+                              Verwijderen
+                            </button>
+                          </div>
+                        ))}
+                        <button className="btn-secondary" type="button" onClick={() => addTemplate('wa')}>
+                          WhatsApp template toevoegen
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="wizard-field">
+              <span>Veelgestelde vragen (optioneel)</span>
+              {faqEntries.map(({ faq, index }) => (
                 <div key={`faq-${index}`} className="faq-card">
                   <input
                     className="wizard-input"
@@ -1146,6 +1300,16 @@ const Wizard = () => {
                   </button>
                 </div>
               ))}
+              {hiddenFaqCount > 0 && (
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+                  + {hiddenFaqCount} extra FAQ {hiddenFaqCount === 1 ? 'is' : "'s"} verborgen
+                </div>
+              )}
+              {form.faqItems.length > 1 && (
+                <button className="btn-secondary" type="button" onClick={() => setShowAllFaqs((prev) => !prev)}>
+                  {showAllFaqs ? 'Minder tonen' : 'Alle FAQ tonen'}
+                </button>
+              )}
               <button className="btn-secondary" type="button" onClick={addFaq}>
                 FAQ toevoegen
               </button>
