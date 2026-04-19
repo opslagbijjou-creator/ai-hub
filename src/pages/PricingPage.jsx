@@ -13,7 +13,7 @@ const PricingPage = () => {
   };
 
   return (
-    <div className="belliq-page bg-background text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+    <div className="belliq-page belliq-pricing bg-background text-on-surface selection:bg-primary-container selection:text-on-primary-container">
       <PublicHeader active="pricing" headerVariant="pricing" />
 
       <main className="belliq-main pb-24">

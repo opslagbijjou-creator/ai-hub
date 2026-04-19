@@ -16,7 +16,7 @@ const LandingPage = () => {
   };
 
   return (
-    <div className="belliq-page bg-surface text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
+    <div className="belliq-page belliq-features bg-surface text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
       <PublicHeader active="features" headerVariant="features" />
 
       <main className="belliq-main overflow-hidden">

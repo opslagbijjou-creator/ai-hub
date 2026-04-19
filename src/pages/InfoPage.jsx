@@ -8,7 +8,7 @@ const InfoPage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="belliq-page bg-surface text-on-surface">
+    <div className="belliq-page belliq-how bg-surface text-on-surface">
       <PublicHeader active="how" headerVariant="how" />
 
       <main className="belliq-main">

@@ -60,7 +60,7 @@ const ContactPage = () => {
   };
 
   return (
-    <div className="belliq-page bg-surface selection:bg-primary-fixed-dim">
+    <div className="belliq-page belliq-contact bg-surface selection:bg-primary-fixed-dim">
       <PublicHeader active="resources" headerVariant="resources" />
 
       <main className="belliq-main pb-24">
