@@ -181,7 +181,7 @@ function AppRoutes() {
     <div className="app-container">
       <Suspense fallback={<FullscreenLoader />}>
         <Routes>
-          <Route path="/" element={user ? <Navigate to={defaultAuthedPath} replace /> : <LandingPage />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/info" element={<InfoPage />} />
           <Route path="/contact" element={<ContactPage />} />
