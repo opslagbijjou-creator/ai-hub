@@ -65,6 +65,10 @@ create table if not exists public.assistant_profiles (
   handoff_rules text,
   greeting text,
   knowledge text,
+  ai_plan jsonb not null default '{}'::jsonb,
+  ai_plan_summary text,
+  ai_plan_status text not null default 'idle',
+  ai_plan_updated_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -73,6 +77,27 @@ alter table public.assistant_profiles add column if not exists website_url text;
 alter table public.assistant_profiles add column if not exists secondary_language text;
 alter table public.assistant_profiles add column if not exists role_description text;
 alter table public.assistant_profiles add column if not exists handoff_rules text;
+alter table public.assistant_profiles add column if not exists ai_plan jsonb;
+alter table public.assistant_profiles add column if not exists ai_plan_summary text;
+alter table public.assistant_profiles add column if not exists ai_plan_status text;
+alter table public.assistant_profiles add column if not exists ai_plan_updated_at timestamptz;
+
+update public.assistant_profiles
+set ai_plan = coalesce(ai_plan, '{}'::jsonb),
+    ai_plan_status = coalesce(ai_plan_status, 'idle');
+
+alter table public.assistant_profiles
+  alter column ai_plan set default '{}'::jsonb,
+  alter column ai_plan set not null,
+  alter column ai_plan_status set default 'idle',
+  alter column ai_plan_status set not null;
+
+alter table public.assistant_profiles
+  drop constraint if exists assistant_profiles_ai_plan_status_check;
+
+alter table public.assistant_profiles
+  add constraint assistant_profiles_ai_plan_status_check
+  check (ai_plan_status in ('idle', 'generating', 'ready', 'error'));
 
 create table if not exists public.assistant_voices (
   id bigserial primary key,

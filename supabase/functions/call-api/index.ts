@@ -751,9 +751,113 @@ function normalizeFaqItems(value: unknown) {
     .slice(0, 50);
 }
 
+function normalizeStringList(value: unknown, fallback: string[] = [], limit = 8) {
+  const rows = Array.isArray(value) ? value : [];
+  const cleaned = rows
+    .map((entry) => safeText(entry))
+    .filter(Boolean)
+    .slice(0, limit);
+
+  return cleaned.length > 0 ? cleaned : fallback.slice(0, limit);
+}
+
+function buildFallbackAssistantPlan(params: {
+  assistant: Record<string, any>;
+  profile: Record<string, any> | null;
+  voice: Record<string, any> | null;
+  number: Record<string, any> | null;
+  channelSettings: Record<string, any> | null;
+  faqItems: Array<Record<string, any>>;
+  websiteSnapshot: WebsiteSnapshot | null;
+  plan: Record<string, any>;
+}) {
+  const { assistant, profile, voice, number, channelSettings, faqItems, websiteSnapshot, plan } = params;
+  const companyName = safeText(profile?.company_name || assistant?.display_name, "Mijn Bedrijf");
+  const roleDescription = safeText(profile?.role_description, "vriendelijke telefonische assistent");
+  const goal = safeText(profile?.goals || profile?.primary_goal, "inkomende vragen beantwoorden");
+  const selectedVoice = safeText(voice?.display_name || voice?.voice_key, "standaard stem");
+  const selectedNumber = safeText(number?.e164, "nog niet gekozen");
+  const websiteHint = safeText(
+    websiteSnapshot?.description || profile?.knowledge,
+    `${companyName} helpt klanten via telefoon, terugbelverzoeken en servicevragen.`,
+  );
+  const faqCount = Array.isArray(faqItems) ? faqItems.length : 0;
+  const smsEnabled = Boolean(channelSettings?.sms_enabled);
+  const whatsappEnabled = Boolean(channelSettings?.whatsapp_enabled);
+  const availabilityMode = safeText(channelSettings?.availability_mode, "always");
+
+  return {
+    version: 1,
+    generatedAt: nowIso(),
+    generatedBy: openai ? "openai_fallback" : "fallback",
+    summary:
+      `${companyName} krijgt een AI-assistent met focus op ${goal}. ` +
+      `Stem ${selectedVoice}, nummer ${selectedNumber}, en een veilige handoff-strategie vormen de basis.`,
+    strategy: [
+      `Positioneer de assistent als ${roleDescription} met duidelijke introductie als AI van ${companyName}.`,
+      "Houd antwoorden kort en praktisch; bevestig altijd naam en terugbelnummer.",
+      websiteHint,
+    ],
+    callFlow: [
+      "Start met begroeting en benoem direct dat de beller met een AI-assistent spreekt.",
+      "Classificeer intentie: informatievraag, serviceverzoek, klacht, of terugbelverzoek.",
+      "Beantwoord op basis van website/FAQ-context; bij twijfel niet gokken maar doorzetten.",
+      "Sluit af met samenvatting en heldere volgende stap voor de klant.",
+    ],
+    automations: [
+      smsEnabled
+        ? "Stuur automatisch een korte SMS-bevestiging na relevante calls."
+        : "SMS staat uit; overweeg bevestigingsberichten voor no-show reductie.",
+      whatsappEnabled
+        ? "Gebruik WhatsApp templates voor follow-up op terugbelverzoeken."
+        : "WhatsApp follow-up staat uit; activeer dit voor snellere klantopvolging.",
+      `Beschikbaarheidsmodus: ${availabilityMode === "custom_hours" ? "custom_hours" : "always"}.`,
+    ],
+    guardrails: [
+      "Vraag nooit om onnodige gevoelige gegevens en sla alleen noodzakelijke data op.",
+      "Escalatie verplicht bij spoed, juridische onzekerheid, klachten of onduidelijke intentie.",
+      "Meld transparant dat de assistent AI-ondersteund is.",
+    ],
+    kpis: [
+      "First-call resolution percentage",
+      "Gemiddelde gesprekstijd en wachttijd",
+      "Aandeel succesvolle terugbelverzoeken",
+      "Escalatiegraad op complexe vragen",
+    ],
+    nextActions: [
+      "Controleer en bevestig rolbeschrijving, handoff-regels en FAQ-antwoorden.",
+      `Finaliseer gekozen pakket (${safeText(plan?.name, "Launch")}) en activeer testcalls.`,
+      `Borg dat minimaal 5 FAQ-items aanwezig zijn (nu: ${faqCount}).`,
+    ],
+  };
+}
+
+function normalizeAssistantPlan(candidate: unknown, fallbackPlan: Record<string, any>) {
+  const item = candidate && typeof candidate === "object" ? candidate as Record<string, unknown> : {};
+
+  return {
+    version: 1,
+    generatedAt: safeText(item.generatedAt || item.generated_at, nowIso()),
+    generatedBy: safeText(item.generatedBy || item.generated_by, fallbackPlan.generatedBy || "fallback"),
+    summary: safeText(item.summary, fallbackPlan.summary).slice(0, 700),
+    strategy: normalizeStringList(item.strategy, fallbackPlan.strategy || [], 8),
+    callFlow: normalizeStringList(item.callFlow || item.call_flow, fallbackPlan.callFlow || [], 8),
+    automations: normalizeStringList(item.automations || item.automation, fallbackPlan.automations || [], 8),
+    guardrails: normalizeStringList(item.guardrails || item.compliance, fallbackPlan.guardrails || [], 8),
+    kpis: normalizeStringList(item.kpis || item.metrics, fallbackPlan.kpis || [], 8),
+    nextActions: normalizeStringList(item.nextActions || item.next_actions, fallbackPlan.nextActions || [], 8),
+  };
+}
+
 function isMissingTableError(error: any) {
   const message = String(error?.message || "").toLowerCase();
   return error?.code === "42P01" || message.includes("does not exist") || message.includes("schema cache");
+}
+
+function isMissingColumnError(error: any, columnName: string) {
+  const message = String(error?.message || "").toLowerCase();
+  const normalized = columnName.toLowerCase();
+  return error?.code === "42703" || (message.includes("column") && message.includes(normalized));
 }
 
 function migrationError() {
@@ -2558,6 +2662,11 @@ async function composeAssistantState(dbClient: any, userId: string) {
   });
   const avatar = getAvatarOption(assistant?.avatar_key);
   const isAdmin = await hasAdminAccess(userId);
+  const aiPlan =
+    profile?.ai_plan && typeof profile.ai_plan === "object" && !Array.isArray(profile.ai_plan)
+      ? profile.ai_plan
+      : null;
+  const aiPlanStatus = safeText(profile?.ai_plan_status, aiPlan ? "ready" : "idle");
 
   return {
     assistant,
@@ -2577,6 +2686,9 @@ async function composeAssistantState(dbClient: any, userId: string) {
       avatarKey: assistant?.avatar_key || avatar.key,
       avatar,
     },
+    aiPlan,
+    aiPlanStatus,
+    aiPlanUpdatedAt: profile?.ai_plan_updated_at || null,
     channels: {
       callEnabled: channelSettings?.call_enabled ?? true,
       smsEnabled: channelSettings?.sms_enabled ?? false,
@@ -2865,6 +2977,148 @@ async function handleOnboardingProgress(user: any, accessToken: string) {
   }
 }
 
+async function generateAssistantPlan(params: {
+  assistant: Record<string, any>;
+  profile: Record<string, any> | null;
+  voice: Record<string, any> | null;
+  number: Record<string, any> | null;
+  channelSettings: Record<string, any> | null;
+  faqItems: Array<Record<string, any>>;
+  websiteSnapshot: WebsiteSnapshot | null;
+  plan: Record<string, any>;
+}) {
+  const fallbackPlan = buildFallbackAssistantPlan(params);
+
+  if (!openai) {
+    return fallbackPlan;
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      temperature: 0.25,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: [
+            "Geef alleen geldig JSON terug zonder markdown.",
+            "Je schrijft een professioneel implementatieplan voor een Nederlandse AI telefoonassistent.",
+            "Gebruik alleen de aangeleverde context. Verzin geen prijzen, openingstijden of beleid.",
+            "JSON keys: summary, strategy, callFlow, automations, guardrails, kpis, nextActions.",
+            "Alle velden behalve summary moeten arrays met korte bullets zijn.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            assistant: {
+              name: params.assistant?.display_name,
+              status: params.assistant?.status,
+              liveStatus: params.assistant?.live_status,
+              billingStatus: params.assistant?.billing_status,
+            },
+            profile: {
+              companyName: params.profile?.company_name,
+              businessType: params.profile?.business_type,
+              goals: params.profile?.goals,
+              roleDescription: params.profile?.role_description,
+              handoffRules: params.profile?.handoff_rules,
+              websiteUrl: params.profile?.website_url,
+              knowledge: params.profile?.knowledge,
+            },
+            voice: {
+              key: params.voice?.voice_key,
+              displayName: params.voice?.display_name,
+            },
+            number: {
+              e164: params.number?.e164,
+              displayLabel: params.number?.display_label,
+            },
+            channels: {
+              callEnabled: params.channelSettings?.call_enabled,
+              smsEnabled: params.channelSettings?.sms_enabled,
+              whatsappEnabled: params.channelSettings?.whatsapp_enabled,
+              availabilityMode: params.channelSettings?.availability_mode,
+              availabilitySchedule: params.channelSettings?.availability_schedule,
+            },
+            faqItems: Array.isArray(params.faqItems)
+              ? params.faqItems.slice(0, 8).map((entry) => ({
+                question: entry?.question,
+                answer: entry?.answer,
+              }))
+              : [],
+            plan: {
+              key: params.plan?.key,
+              name: params.plan?.name,
+              monthlyPriceEur: params.plan?.monthlyPriceEur,
+              includedMinutes: params.plan?.includedMinutes,
+              includedTasks: params.plan?.includedTasks,
+            },
+            websiteSnapshot: params.websiteSnapshot
+              ? {
+                finalUrl: params.websiteSnapshot.finalUrl,
+                title: params.websiteSnapshot.title,
+                description: params.websiteSnapshot.description,
+                headings: params.websiteSnapshot.headings,
+              }
+              : null,
+          }),
+        },
+      ],
+    });
+
+    const raw = completion.choices?.[0]?.message?.content || "";
+    const parsed = tryParseJsonObject(raw);
+    if (!parsed) return fallbackPlan;
+
+    return normalizeAssistantPlan(
+      {
+        ...parsed,
+        generatedBy: "openai",
+        generatedAt: nowIso(),
+      },
+      fallbackPlan,
+    );
+  } catch (error) {
+    console.warn("AI plan generatie waarschuwing:", (error as any)?.message || error);
+    return fallbackPlan;
+  }
+}
+
+async function persistAssistantPlan(
+  dbClient: any,
+  assistantId: string,
+  plan: Record<string, any>,
+) {
+  const summary = safeText(plan?.summary).slice(0, 700);
+  const updatedAt = nowIso();
+  const { error } = await dbClient
+    .from("assistant_profiles")
+    .update({
+      ai_plan: plan,
+      ai_plan_summary: summary,
+      ai_plan_status: "ready",
+      ai_plan_updated_at: updatedAt,
+      updated_at: updatedAt,
+    })
+    .eq("assistant_id", assistantId);
+
+  if (!error) {
+    return { persisted: true, mode: "ai_plan_columns" };
+  }
+
+  if (
+    isMissingColumnError(error, "ai_plan") ||
+    isMissingColumnError(error, "ai_plan_status") ||
+    isMissingColumnError(error, "ai_plan_summary")
+  ) {
+    return { persisted: false, mode: "schema_missing" };
+  }
+
+  throw error;
+}
+
 async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: string) {
   try {
     const dbClient = getUserDbClient(accessToken);
@@ -2977,6 +3231,59 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
           headings: websiteSnapshot.headings,
         }
         : null,
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleOnboardingAiPlan(req: Request, user: any, accessToken: string) {
+  try {
+    const dbClient = getUserDbClient(accessToken);
+    const assistant = await ensureAssistant(dbClient, user.id);
+    const body = await parseBody(req) as Record<string, unknown>;
+
+    const profile = await fetchProfile(dbClient, assistant.id);
+    const voice = await fetchSelectedVoice(dbClient, assistant.id);
+    const number = await fetchSelectedNumber(dbClient, assistant.id);
+    const faqItems = await fetchFaqEntries(dbClient, assistant.id);
+    const channelSettings = await fetchChannelSettings(dbClient, assistant.id);
+    const selectedPlan = getPlanConfig(body?.planKey || assistant.desired_plan || DEFAULT_PLAN.key);
+    const websiteUrl = normalizeWebsiteUrl(body?.websiteUrl || profile?.website_url);
+    const websiteSnapshot = websiteUrl ? await fetchWebsiteSnapshot(websiteUrl) : null;
+
+    try {
+      await dbClient
+        .from("assistant_profiles")
+        .update({
+          ai_plan_status: "generating",
+          updated_at: nowIso(),
+        })
+        .eq("assistant_id", assistant.id);
+    } catch {
+      // kolommen kunnen nog ontbreken; plan generatie gaat alsnog door
+    }
+
+    const aiPlan = await generateAssistantPlan({
+      assistant,
+      profile,
+      voice,
+      number,
+      channelSettings,
+      faqItems,
+      websiteSnapshot,
+      plan: selectedPlan,
+    });
+
+    const persistence = await persistAssistantPlan(dbClient, assistant.id, aiPlan);
+    const state = await composeAssistantState(dbClient, user.id);
+
+    return json({
+      success: true,
+      aiPlan,
+      persisted: persistence.persisted,
+      persistenceMode: persistence.mode,
+      ...state,
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -4108,6 +4415,12 @@ Deno.serve(async (req: Request) => {
         const auth = await requireUser(req);
         if (auth.error) return auth.error;
         return await handleOnboardingAiSuggest(req, auth.user, auth.token);
+      }
+
+      if (method === "POST" && path === "/onboarding/ai-plan") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleOnboardingAiPlan(req, auth.user, auth.token);
       }
 
       if (method === "POST" && path === "/assistant/config") {

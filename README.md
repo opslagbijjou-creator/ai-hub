@@ -21,12 +21,14 @@ Call-only SaaS voor AI telefoon-assistenten met Supabase-only productiebackend.
 Run in Supabase SQL Editor:
 
 - `server/sql/call_assistant_migration.sql`
+- `server/sql/assistant_ai_plan_migration.sql` (alleen nodig als je schema al eerder is uitgerold)
 
 Belangrijk in deze migratie:
 - `admin_users` tabel voor server-side adminrollen
 - plaintext integratie-secrets worden genuld
 - bestaande self-service koppelingen gaan terug naar `pending_setup`
 - persistente `web_test_turns.audio_data_url` blobs worden opgeschoond
+- AI plan-opslag in `assistant_profiles.ai_plan*` voor achtergrondstrategie tijdens onboarding
 
 ## 2. Frontend lokaal starten
 ```bash

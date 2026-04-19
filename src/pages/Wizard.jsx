@@ -145,6 +145,9 @@ const Wizard = () => {
   const [numberOptions, setNumberOptions] = useState(FALLBACK_NUMBERS);
   const [assistantState, setAssistantState] = useState(null);
   const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [aiPlan, setAiPlan] = useState(null);
+  const [aiPlanStatus, setAiPlanStatus] = useState('idle');
+  const [aiPlanMessage, setAiPlanMessage] = useState('');
 
   const [form, setForm] = useState({
     assistantName: 'Mijn assistent',
@@ -282,6 +285,15 @@ const Wizard = () => {
       const channels = statePayload?.channels || {};
       const wizard = statePayload?.wizard || {};
       const faqItems = Array.isArray(statePayload?.faqItems) ? statePayload.faqItems : [];
+      const persistedAiPlan =
+        statePayload?.aiPlan && typeof statePayload.aiPlan === 'object'
+          ? statePayload.aiPlan
+          : statePayload?.profile?.ai_plan && typeof statePayload.profile.ai_plan === 'object'
+            ? statePayload.profile.ai_plan
+            : null;
+      setAiPlan(persistedAiPlan);
+      setAiPlanStatus(statePayload?.aiPlanStatus || statePayload?.profile?.ai_plan_status || (persistedAiPlan ? 'ready' : 'idle'));
+      setAiPlanMessage('');
 
       const initialWebsite = profile?.website_url || '';
       const inferredAssistantName =
@@ -435,6 +447,10 @@ const Wizard = () => {
         }
 
         setAssistantState(payload);
+        if (payload?.aiPlan && typeof payload.aiPlan === 'object') {
+          setAiPlan(payload.aiPlan);
+          setAiPlanStatus(payload?.aiPlanStatus || 'ready');
+        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('belliq:onboarding-updated'));
         }
@@ -503,17 +519,70 @@ const Wizard = () => {
     }
   };
 
+  const refreshAiPlan = useCallback(
+    async ({ silent = true } = {}) => {
+      if (!silent) {
+        setAiPlanMessage('AI plan van aanpak wordt bijgewerkt...');
+      }
+      setAiPlanStatus('generating');
+
+      try {
+        const response = await authFetch('/api/onboarding/ai-plan', {
+          method: 'POST',
+          body: JSON.stringify({
+            planKey: form.planKey,
+            websiteUrl: form.websiteUrl
+          })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || 'AI plan kon niet worden bijgewerkt.');
+        }
+
+        const nextPlan =
+          payload?.aiPlan && typeof payload.aiPlan === 'object'
+            ? payload.aiPlan
+            : payload?.profile?.ai_plan && typeof payload.profile.ai_plan === 'object'
+              ? payload.profile.ai_plan
+              : null;
+
+        setAiPlan(nextPlan);
+        setAiPlanStatus(payload?.aiPlanStatus || payload?.profile?.ai_plan_status || (nextPlan ? 'ready' : 'idle'));
+        if (!silent) {
+          setAiPlanMessage(
+            payload?.persisted === false
+              ? 'AI-plan is gegenereerd. Run server/sql/assistant_ai_plan_migration.sql om dit permanent op te slaan.'
+              : 'AI-plan succesvol bijgewerkt.'
+          );
+        }
+      } catch (error) {
+        setAiPlanStatus('error');
+        if (!silent) {
+          setAiPlanMessage(normalizeUiError(error, 'AI plan kon niet worden bijgewerkt.'));
+        }
+      }
+    },
+    [authFetch, form.planKey, form.websiteUrl]
+  );
+
   const handleNext = async () => {
     if (!validationByStep[currentStep]) return;
 
     if (currentStep < 5) {
       const result = await saveStep(currentStep, { setupCompleted: false });
-      if (result) setCurrentStep((prev) => prev + 1);
+      if (result) {
+        if (currentStep >= 2) {
+          void refreshAiPlan({ silent: true });
+        }
+        setCurrentStep((prev) => prev + 1);
+      }
       return;
     }
 
     const result = await saveStep(5, { setupCompleted: true });
     if (!result) return;
+    void refreshAiPlan({ silent: true });
 
     setWizardStage('preparing');
 
@@ -1170,6 +1239,36 @@ const Wizard = () => {
                 €{selectedPlan.monthlyPriceEur}/maand · {selectedPlan.includedMinutes} minuten inbegrepen ·
                 overage €{selectedPlan.overageMinuteEur.toFixed(2)}/min
               </p>
+            </div>
+
+            <div className="wizard-plan-card">
+              <strong>AI plan van aanpak</strong>
+              <p>
+                {aiPlan?.summary ||
+                  'Na je basisinstellingen maakt Belliq automatisch een praktisch plan voor openingsscript, escalaties en opvolging.'}
+              </p>
+              {Array.isArray(aiPlan?.nextActions) && aiPlan.nextActions.length > 0 && (
+                <ul style={{ margin: '0.5rem 0 0.75rem 1rem', color: 'var(--text-muted)' }}>
+                  {aiPlan.nextActions.slice(0, 3).map((entry, index) => (
+                    <li key={`${entry}-${index}`}>{entry}</li>
+                  ))}
+                </ul>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => refreshAiPlan({ silent: false })}
+                  disabled={aiPlanStatus === 'generating'}
+                >
+                  <Sparkles size={16} />
+                  {aiPlanStatus === 'generating' ? 'AI maakt plan...' : 'Vernieuw AI plan'}
+                </button>
+                <small style={{ color: 'var(--text-muted)' }}>
+                  Status: {aiPlanStatus === 'ready' ? 'Klaar' : aiPlanStatus === 'generating' ? 'Bezig' : aiPlanStatus}
+                </small>
+              </div>
+              {aiPlanMessage && <small style={{ color: 'var(--text-muted)' }}>{aiPlanMessage}</small>}
             </div>
           </>
         )}
