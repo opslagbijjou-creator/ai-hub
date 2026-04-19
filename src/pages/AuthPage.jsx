@@ -231,7 +231,7 @@ const AuthPage = () => {
           )}
 
           {notice && (
-            <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', color: '#86efac', fontSize: '0.85rem' }}>
+            <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', color: '#047857', fontSize: '0.85rem' }}>
               {notice}
             </div>
           )}
@@ -247,7 +247,7 @@ const AuthPage = () => {
                 padding: '10px',
                 borderRadius: '8px',
                 border: '1px solid rgba(16, 185, 129, 0.4)',
-                color: '#86efac',
+                color: '#047857',
                 background: 'rgba(16, 185, 129, 0.08)'
               }}
             >
@@ -256,7 +256,7 @@ const AuthPage = () => {
           )}
 
           {!supabaseConfigured && (
-            <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px', color: '#FDE68A', fontSize: '0.85rem' }}>
+            <div className="auth-field" style={{ padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px', color: '#b45309', fontSize: '0.85rem' }}>
               {supabaseConfigMessage}
             </div>
           )}

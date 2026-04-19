@@ -721,12 +721,14 @@ const Overview = () => {
         <div className="setup-hero-aside">
           <div className="setup-hero-progress">
             <span>Setup voortgang</span>
-            <strong>{completedSteps}/4 klaar</strong>
+            <strong>
+              {completedSteps}/{setupSteps.length} klaar
+            </strong>
           </div>
           <p className="text-muted">
             {completedSteps < 2
               ? 'Vul eerst je briefing en basisinstellingen in.'
-              : completedSteps < 4
+              : completedSteps < setupSteps.length
                 ? 'Je bent dichtbij. Rond je koppelingen en livegang af.'
                 : 'Alles staat goed. Je kunt nu vooral finetunen en volgen.'}
           </p>
