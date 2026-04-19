@@ -97,17 +97,21 @@ a {
 
 button {
   cursor: pointer;
-  border: none;
-  background: none;
+}
+
+input:not([class]),
+textarea:not([class]),
+select:not([class]) {
+  color: inherit;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--bg-surface);
 }
 
 input,
 textarea,
 select {
   color: inherit;
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  background: var(--bg-surface);
 }
 
 ::placeholder {
