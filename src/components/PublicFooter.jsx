@@ -36,9 +36,9 @@ const PublicFooter = () => {
             </button>
             <button
               className="text-slate-500 hover:text-slate-900 transition-colors hover:underline decoration-indigo-500 underline-offset-4"
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/contact')}
             >
-              Dashboard
+              Status
             </button>
           </div>
 
