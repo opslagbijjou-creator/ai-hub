@@ -7,9 +7,11 @@ const isLocalhost = typeof window !== 'undefined'
   && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 const supabaseFunctionBase = rawSupabaseUrl ? `${rawSupabaseUrl}/functions/v1/call-api` : '';
-const usingSupabaseFunctions = !rawApiBase && Boolean(supabaseFunctionBase);
+const localhostApiBase = isLocalhost ? 'http://localhost:3001' : '';
+const resolvedApiBase = rawApiBase || localhostApiBase || supabaseFunctionBase || '';
+const usingSupabaseFunctions = Boolean(supabaseFunctionBase) && resolvedApiBase === supabaseFunctionBase;
 
-export const API_BASE = rawApiBase || supabaseFunctionBase || (isLocalhost ? 'http://localhost:3001' : '');
+export const API_BASE = resolvedApiBase;
 export const hasApiBaseConfig = Boolean(API_BASE);
 export const apiConfigMessage =
   hasSupabaseConfig
