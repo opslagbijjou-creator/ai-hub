@@ -1,18 +1,95 @@
 <!doctype html>
-<html lang="en">
+<html lang="nl" class="light">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    
-    <title>AI Hub Voice - AI Bel-Assistent SaaS</title>
+
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              'on-tertiary-fixed-variant': '#7b2f00',
+              'surface-dim': '#d8dadc',
+              'on-secondary': '#ffffff',
+              'on-secondary-container': '#65627a',
+              outline: '#777587',
+              'on-surface': '#191c1e',
+              'secondary-fixed-dim': '#c8c3df',
+              'on-primary-fixed': '#0f0069',
+              'on-primary': '#ffffff',
+              'tertiary-fixed': '#ffdbcc',
+              'primary-fixed-dim': '#c3c0ff',
+              'surface-container-low': '#f2f4f6',
+              'outline-variant': '#c7c4d8',
+              'surface-bright': '#f7f9fb',
+              'error-container': '#ffdad6',
+              'on-error-container': '#93000a',
+              secondary: '#5f5c74',
+              error: '#ba1a1a',
+              'surface-container-highest': '#e0e3e5',
+              'on-secondary-fixed-variant': '#47445b',
+              'on-primary-fixed-variant': '#3323cc',
+              'inverse-on-surface': '#eff1f3',
+              background: '#f7f9fb',
+              'surface-variant': '#e0e3e5',
+              'on-primary-container': '#dad7ff',
+              'tertiary-fixed-dim': '#ffb695',
+              'tertiary-container': '#a44100',
+              'on-tertiary': '#ffffff',
+              'surface-container-high': '#e6e8ea',
+              'on-background': '#191c1e',
+              'primary-fixed': '#e2dfff',
+              'secondary-fixed': '#e4dffc',
+              'on-surface-variant': '#464555',
+              'inverse-primary': '#c3c0ff',
+              'secondary-container': '#e4dffc',
+              'surface-container-lowest': '#ffffff',
+              tertiary: '#7e3000',
+              'surface-container': '#eceef0',
+              'inverse-surface': '#2d3133',
+              'on-secondary-fixed': '#1b192e',
+              'surface-tint': '#4d44e3',
+              'primary-container': '#4f46e5',
+              'on-tertiary-container': '#ffd2be',
+              'on-error': '#ffffff',
+              surface: '#f7f9fb',
+              primary: '#3525cd',
+              'on-tertiary-fixed': '#351000'
+            },
+            borderRadius: {
+              DEFAULT: '1rem',
+              lg: '2rem',
+              xl: '3rem',
+              full: '9999px'
+            },
+            fontFamily: {
+              headline: ['Manrope'],
+              body: ['Inter'],
+              label: ['Inter']
+            }
+          }
+        }
+      };
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>Belliq - AI Communicatie</title>
   </head>
-  <body>
+  <body class="bg-surface text-on-surface font-body">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
