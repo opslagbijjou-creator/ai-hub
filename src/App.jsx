@@ -56,7 +56,7 @@ const ScrollToTop = () => {
 };
 
 function AppRoutes() {
-  const { user, authLoading } = useAppContext();
+  const { user, authLoading, setIsAdmin } = useAppContext();
   const [onboardingState, setOnboardingState] = React.useState({
     loading: false,
     checked: false,
@@ -70,6 +70,7 @@ function AppRoutes() {
     const checkOnboarding = async () => {
       if (!user) {
         if (!cancelled) {
+          setIsAdmin(false);
           setOnboardingState({
             loading: false,
             checked: false,
@@ -96,6 +97,7 @@ function AppRoutes() {
         const token = session?.access_token;
         if (!token) {
           if (!cancelled) {
+            setIsAdmin(false);
             setOnboardingState({
               loading: false,
               checked: true,
@@ -117,6 +119,8 @@ function AppRoutes() {
           throw new Error(payload?.error || 'Onboardingstatus kon niet worden geladen.');
         }
 
+        setIsAdmin(Boolean(payload?.viewer?.isAdmin));
+
         const step = Math.min(
           5,
           Math.max(1, Number(payload?.wizard?.step || payload?.assistant?.setup_step || 1))
@@ -133,6 +137,7 @@ function AppRoutes() {
         }
       } catch {
         if (!cancelled) {
+          setIsAdmin(false);
           setOnboardingState({
             loading: false,
             checked: true,
@@ -150,7 +155,7 @@ function AppRoutes() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user]);
+  }, [authLoading, setIsAdmin, user]);
 
   const onboardingLoading = Boolean(user) && (onboardingState.loading || !onboardingState.checked);
 

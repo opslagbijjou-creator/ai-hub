@@ -10,7 +10,6 @@ import {
   CreditCard,
   Link2,
   Mail,
-  PackageSearch,
   Phone,
   PhoneCall,
   PlugZap,
@@ -61,8 +60,6 @@ const INTEGRATION_STATUS_LABELS = {
   disconnected: 'Losgekoppeld',
   error: 'Actie nodig'
 };
-
-const SELF_SERVICE_PROVIDERS = new Set(['shopify', 'prestashop', 'woocommerce']);
 
 const SetupStepCard = ({ title, description, done, tone = 'default' }) => (
   <div className={`setup-step-card ${done ? 'is-done' : ''} tone-${tone}`}>
@@ -200,7 +197,7 @@ const KnowledgeBase = () => {
 
 const Overview = () => {
   const navigate = useNavigate();
-  const { assistantConfig, setAssistantConfig, apiConfigured, apiConfigMessage, isAdmin } = useAppContext();
+  const { assistantConfig, setAssistantConfig, apiConfigured, apiConfigMessage, isAdmin, setIsAdmin } = useAppContext();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -220,24 +217,12 @@ const Overview = () => {
   const [integrations, setIntegrations] = useState([]);
   const [integrationDraft, setIntegrationDraft] = useState({
     provider: 'shopify',
-    mode: 'concierge',
     storeUrl: '',
     contactEmail: '',
-    setupNotes: '',
-    accessToken: '',
-    apiKey: '',
-    apiSecret: ''
+    setupNotes: ''
   });
   const [integrationSaving, setIntegrationSaving] = useState(false);
   const [integrationNotice, setIntegrationNotice] = useState('');
-  const [orderLookupDraft, setOrderLookupDraft] = useState({
-    provider: '',
-    orderReference: '',
-    email: ''
-  });
-  const [orderLookupLoading, setOrderLookupLoading] = useState(false);
-  const [orderLookupResult, setOrderLookupResult] = useState(null);
-  const supportsSelfService = SELF_SERVICE_PROVIDERS.has(integrationDraft.provider);
 
   const authFetch = useCallback(async (path, options = {}) => {
     const {
@@ -301,6 +286,7 @@ const Overview = () => {
       if (!stateRes.ok) throw new Error(statePayload?.error || 'Kon assistant state niet laden.');
       if (!usageRes.ok) throw new Error(usagePayload?.error || 'Kon usage niet laden.');
 
+      setIsAdmin(Boolean(statePayload?.viewer?.isAdmin));
       setAssistantState(statePayload);
       setUsageSummary(usagePayload);
       setIntegrations(Array.isArray(statePayload?.integrations) ? statePayload.integrations : []);
@@ -314,11 +300,12 @@ const Overview = () => {
         toneOfVoice: statePayload?.profile?.tone_of_voice || 'vriendelijk en professioneel'
       });
     } catch (loadError) {
+      setIsAdmin(false);
       setError(loadError?.message || 'Kon dashboardgegevens niet laden.');
     } finally {
       setLoading(false);
     }
-  }, [authFetch, hydrateContextFromState]);
+  }, [authFetch, hydrateContextFromState, setIsAdmin]);
 
   const saveSettings = async () => {
     setSaveLoading(true);
@@ -380,41 +367,18 @@ const Overview = () => {
   };
 
   const connectIntegration = async () => {
-    if (integrationDraft.mode === 'self_service' && !supportsSelfService) {
-      setIntegrationNotice(
-        `${PROVIDER_LABELS[integrationDraft.provider] || integrationDraft.provider} kan nu alleen via "Wij regelen dit".`
-      );
-      return;
-    }
-
     setIntegrationSaving(true);
     setIntegrationNotice('');
 
     try {
-      const payload = {
-        provider: integrationDraft.provider,
-        storeUrl: integrationDraft.storeUrl,
-        mode: integrationDraft.mode,
-        contactEmail: integrationDraft.contactEmail,
-        setupNotes: integrationDraft.setupNotes
-      };
-
-      if (integrationDraft.mode === 'self_service' && integrationDraft.provider === 'shopify') {
-        payload.accessToken = integrationDraft.accessToken;
-      }
-
-      if (integrationDraft.mode === 'self_service' && integrationDraft.provider === 'prestashop') {
-        payload.apiKey = integrationDraft.apiKey;
-      }
-
-      if (integrationDraft.mode === 'self_service' && integrationDraft.provider === 'woocommerce') {
-        payload.apiKey = integrationDraft.apiKey;
-        payload.apiSecret = integrationDraft.apiSecret;
-      }
-
       const response = await authFetch('/api/integrations/connect', {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          provider: integrationDraft.provider,
+          storeUrl: integrationDraft.storeUrl,
+          contactEmail: integrationDraft.contactEmail,
+          setupNotes: integrationDraft.setupNotes
+        })
       });
 
       const data = await response.json();
@@ -423,18 +387,13 @@ const Overview = () => {
       }
 
       setIntegrationNotice(
-        data?.mode === 'concierge'
-          ? `${PROVIDER_LABELS[integrationDraft.provider] || integrationDraft.provider} staat klaar. Wij koppelen dit voor je op de achtergrond.`
-          : `${PROVIDER_LABELS[integrationDraft.provider] || integrationDraft.provider} is direct gekoppeld.`
+        `${PROVIDER_LABELS[integrationDraft.provider] || integrationDraft.provider} staat klaar. Wij koppelen dit voor je op de achtergrond.`
       );
       setIntegrationDraft((prev) => ({
         ...prev,
         storeUrl: '',
         contactEmail: prev.contactEmail,
-        setupNotes: '',
-        accessToken: '',
-        apiKey: '',
-        apiSecret: ''
+        setupNotes: ''
       }));
       await loadData();
     } catch (connectError) {
@@ -468,37 +427,6 @@ const Overview = () => {
     }
   };
 
-  const testOrderLookup = async () => {
-    setOrderLookupLoading(true);
-    setOrderLookupResult(null);
-    setIntegrationNotice('');
-
-    try {
-      const response = await authFetch('/api/integrations/order-status', {
-        method: 'POST',
-        body: JSON.stringify({
-          provider: orderLookupDraft.provider || undefined,
-          orderReference: orderLookupDraft.orderReference,
-          email: orderLookupDraft.email
-        })
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Orderstatus ophalen mislukt.');
-      }
-
-      setOrderLookupResult(data);
-    } catch (lookupError) {
-      setOrderLookupResult({
-        success: false,
-        message: lookupError?.message || 'Orderstatus ophalen mislukt.'
-      });
-    } finally {
-      setOrderLookupLoading(false);
-    }
-  };
-
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -507,7 +435,6 @@ const Overview = () => {
   const usage = usageSummary?.usage;
   const connectedIntegrations = integrations.filter((entry) => entry.status === 'connected');
   const pendingIntegrations = integrations.filter((entry) => entry.status === 'pending_setup');
-  const lookupReadyIntegrations = connectedIntegrations.filter((entry) => SELF_SERVICE_PROVIDERS.has(entry.provider));
   const companyName =
     assistantState?.profile?.company_name || assistantState?.assistant?.display_name || assistantConfig?.companyName || 'je bedrijf';
   const identityName = assistantState?.identity?.name || assistantState?.assistant?.display_name || companyName;
@@ -547,7 +474,7 @@ const Overview = () => {
     {
       title: 'Kennis en webshop',
       description: connectedIntegrations.length
-        ? 'Je webshop is gekoppeld voor orderstatus.'
+        ? 'Je webshop staat klaar binnen de concierge flow.'
         : pendingIntegrations.length
           ? 'Wij zijn je shopkoppeling op de achtergrond aan het afronden.'
           : 'Koppel je shop of laat ons dit voor je regelen.',
@@ -576,13 +503,7 @@ const Overview = () => {
   const completedSteps = wizardChecklist.length ? wizardCompletedCount : setupSteps.filter((step) => step.done).length;
   const integrationButtonDisabled =
     integrationSaving ||
-    !integrationDraft.storeUrl.trim() ||
-    (integrationDraft.mode === 'self_service' &&
-      (!supportsSelfService ||
-        (integrationDraft.provider === 'shopify' && !integrationDraft.accessToken.trim()) ||
-        (integrationDraft.provider === 'prestashop' && !integrationDraft.apiKey.trim()) ||
-        (integrationDraft.provider === 'woocommerce' &&
-          (!integrationDraft.apiKey.trim() || !integrationDraft.apiSecret.trim()))));
+    !integrationDraft.storeUrl.trim();
 
   const nextAction = useMemo(() => {
     if (!hasBusinessProfile || !hasVoiceAndNumber) {
@@ -923,9 +844,9 @@ const Overview = () => {
       <section ref={commerceSectionRef} className="glass-panel commerce-hub">
         <div className="setup-section-header">
           <div>
-            <h3><ShoppingCart size={18} /> Webshop en orderstatus</h3>
+            <h3><ShoppingCart size={18} /> Webshop en concierge setup</h3>
             <p className="text-muted">
-              Klanten hoeven geen technische stappen te doen. Kies hoe de koppeling geregeld wordt en laat de rest op de achtergrond afronden.
+              Klanten hoeven geen technische stappen of secrets meer in te vullen. Kies het platform, deel de shop-URL en laat de technische koppeling via admin afronden.
             </p>
           </div>
         </div>
@@ -938,46 +859,12 @@ const Overview = () => {
 
         <div className="commerce-flow-grid">
           <div className="commerce-request-card">
-            <div className="commerce-mode-switch">
-              <button
-                className={`commerce-mode-pill ${integrationDraft.mode === 'concierge' ? 'active' : ''}`}
-                onClick={() =>
-                  setIntegrationDraft((prev) => ({
-                    ...prev,
-                    mode: 'concierge',
-                    accessToken: '',
-                    apiKey: '',
-                    apiSecret: ''
-                  }))}
-              >
-                Wij regelen dit
-              </button>
-              <button
-                className={`commerce-mode-pill ${integrationDraft.mode === 'self_service' ? 'active' : ''}`}
-                onClick={() =>
-                  setIntegrationDraft((prev) => ({
-                    ...prev,
-                    mode: SELF_SERVICE_PROVIDERS.has(prev.provider) ? 'self_service' : 'concierge'
-                  }))}
-              >
-                Ik koppel het zelf
-              </button>
+            <div className="commerce-helper-card">
+              <strong>Metadata-only aanvraag</strong>
+              <p className="text-muted">
+                Voor productie accepteren we hier alleen platform, shop-URL, contactadres en setupnotities. Secure order lookup komt later terug in fase 2 met encrypted secret management.
+              </p>
             </div>
-
-              <div className="commerce-helper-card">
-                <strong>
-                  {integrationDraft.mode === 'concierge'
-                    ? 'Rustige flow voor niet-technische klanten'
-                    : 'Expertmodus voor directe koppeling'}
-                </strong>
-                <p className="text-muted">
-                  {integrationDraft.mode === 'concierge'
-                    ? 'Je klant kiest alleen platform, shop-URL en een korte notitie. Jij of admin rondt de koppeling daarna af.'
-                    : supportsSelfService
-                      ? 'Gebruik dit alleen als je de benodigde webshop-inloggegevens al hebt.'
-                      : 'Voor dit platform gebruiken we nu alleen concierge setup.'}
-                </p>
-              </div>
 
             <div className="commerce-form-grid">
               <label>
@@ -988,22 +875,15 @@ const Overview = () => {
                   onChange={(event) =>
                     setIntegrationDraft((prev) => ({
                       ...prev,
-                      provider: event.target.value,
-                      mode:
-                        prev.mode === 'self_service' && !SELF_SERVICE_PROVIDERS.has(event.target.value)
-                          ? 'concierge'
-                          : prev.mode,
-                      accessToken: '',
-                      apiKey: '',
-                      apiSecret: ''
+                      provider: event.target.value
                     }))}
                 >
                   <option value="shopify">Shopify</option>
                   <option value="prestashop">PrestaShop</option>
                   <option value="woocommerce">WooCommerce</option>
-                  <option value="magento">Magento 2 (concierge)</option>
-                  <option value="bigcommerce">BigCommerce (concierge)</option>
-                  <option value="stripe">Stripe Billing (concierge)</option>
+                  <option value="magento">Magento 2</option>
+                  <option value="bigcommerce">BigCommerce</option>
+                  <option value="stripe">Stripe Billing</option>
                 </select>
               </label>
 
@@ -1022,115 +902,37 @@ const Overview = () => {
                 />
               </label>
 
-              {integrationDraft.mode === 'concierge' && (
-                <>
-                  <label>
-                    Contact e-mail
-                    <div className="input-with-icon">
-                      <Mail size={16} />
-                      <input
-                        type="email"
-                        className="glass-input"
-                        placeholder="mail@bedrijf.nl"
-                        value={integrationDraft.contactEmail}
-                        onChange={(event) =>
-                          setIntegrationDraft((prev) => ({
-                            ...prev,
-                            contactEmail: event.target.value
-                          }))}
-                      />
-                    </div>
-                  </label>
-
-                  <label>
-                    Korte notitie voor setup
-                    <textarea
-                      className="glass-input glass-textarea"
-                      placeholder="Bijv. wij willen vooral orderstatus en verzendinformatie kunnen beantwoorden."
-                      value={integrationDraft.setupNotes}
-                      onChange={(event) =>
-                        setIntegrationDraft((prev) => ({
-                          ...prev,
-                          setupNotes: event.target.value
-                        }))}
-                    />
-                  </label>
-                </>
-              )}
-
-              {integrationDraft.mode === 'self_service' && integrationDraft.provider === 'shopify' && (
-                <label>
-                  Shopify Admin Access Token
+              <label>
+                Contact e-mail
+                <div className="input-with-icon">
+                  <Mail size={16} />
                   <input
-                    type="password"
+                    type="email"
                     className="glass-input"
-                    placeholder="shpat_..."
-                    value={integrationDraft.accessToken}
+                    placeholder="mail@bedrijf.nl"
+                    value={integrationDraft.contactEmail}
                     onChange={(event) =>
                       setIntegrationDraft((prev) => ({
                         ...prev,
-                        accessToken: event.target.value
+                        contactEmail: event.target.value
                       }))}
                   />
-                </label>
-              )}
-
-              {integrationDraft.mode === 'self_service' && integrationDraft.provider === 'prestashop' && (
-                <label>
-                  PrestaShop API Key
-                  <input
-                    type="password"
-                    className="glass-input"
-                    placeholder="API sleutel"
-                    value={integrationDraft.apiKey}
-                    onChange={(event) =>
-                      setIntegrationDraft((prev) => ({
-                        ...prev,
-                        apiKey: event.target.value
-                      }))}
-                  />
-                </label>
-              )}
-
-              {integrationDraft.mode === 'self_service' && integrationDraft.provider === 'woocommerce' && (
-                <>
-                  <label>
-                    WooCommerce Consumer Key
-                    <input
-                      type="password"
-                      className="glass-input"
-                      placeholder="ck_..."
-                      value={integrationDraft.apiKey}
-                      onChange={(event) =>
-                        setIntegrationDraft((prev) => ({
-                          ...prev,
-                          apiKey: event.target.value
-                        }))}
-                    />
-                  </label>
-
-                  <label>
-                    WooCommerce Consumer Secret
-                    <input
-                      type="password"
-                      className="glass-input"
-                      placeholder="cs_..."
-                      value={integrationDraft.apiSecret}
-                      onChange={(event) =>
-                        setIntegrationDraft((prev) => ({
-                          ...prev,
-                          apiSecret: event.target.value
-                        }))}
-                    />
-                  </label>
-                </>
-              )}
-
-              {integrationDraft.mode === 'self_service' && !supportsSelfService && (
-                <div className="glass-panel" style={{ padding: '0.7rem 0.85rem', fontSize: '0.85rem' }}>
-                  Dit platform ondersteunt nu alleen concierge setup.
                 </div>
-              )}
+              </label>
+
+              <label>
+                Korte notitie voor setup
+                <textarea
+                  className="glass-input glass-textarea"
+                  placeholder="Bijv. wij willen vooral klantvragen en orderupdates in de concierge flow afhandelen."
+                  value={integrationDraft.setupNotes}
+                  onChange={(event) =>
+                    setIntegrationDraft((prev) => ({
+                      ...prev,
+                      setupNotes: event.target.value
+                    }))}
+                />
+              </label>
             </div>
 
             <button
@@ -1139,11 +941,7 @@ const Overview = () => {
               onClick={connectIntegration}
             >
               <PlugZap size={15} />
-              {integrationSaving
-                ? 'Bezig...'
-                : integrationDraft.mode === 'concierge'
-                  ? 'Vraag koppeling aan'
-                  : 'Koppel direct'}
+              {integrationSaving ? 'Bezig...' : 'Vraag koppeling aan'}
             </button>
           </div>
 
@@ -1195,73 +993,15 @@ const Overview = () => {
             </div>
 
             <div className="glass-panel commerce-lookup-box">
-              <h4 style={{ marginBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                <PackageSearch size={16} /> Orderstatus test
-              </h4>
+              <h4 style={{ marginBottom: '0.5rem' }}>Secure commerce lookup</h4>
               <p className="text-muted" style={{ marginBottom: '0.75rem' }}>
-                Test hoe de assistent straks een ordervraag oppakt. Dit werkt zodra minimaal één koppeling live staat.
+                Live orderstatus lookup is tijdelijk uit productie gehaald. Zo voorkomen we dat webshop-credentials of ruwe orderpayloads in de app-database of frontend terechtkomen.
               </p>
-
-              <div className="commerce-lookup-fields">
-                <select
-                  className="glass-input"
-                  value={orderLookupDraft.provider}
-                  onChange={(event) =>
-                    setOrderLookupDraft((prev) => ({ ...prev, provider: event.target.value }))}
-                >
-                  <option value="">Auto (eerste actieve)</option>
-                  <option value="shopify">Shopify</option>
-                  <option value="prestashop">PrestaShop</option>
-                  <option value="woocommerce">WooCommerce</option>
-                </select>
-
-                <input
-                  type="text"
-                  className="glass-input"
-                  placeholder="Ordernummer (bijv. #1001)"
-                  value={orderLookupDraft.orderReference}
-                  onChange={(event) =>
-                    setOrderLookupDraft((prev) => ({ ...prev, orderReference: event.target.value }))}
-                />
-
-                <input
-                  type="email"
-                  className="glass-input"
-                  placeholder="Klant e-mail (optioneel)"
-                  value={orderLookupDraft.email}
-                  onChange={(event) =>
-                    setOrderLookupDraft((prev) => ({ ...prev, email: event.target.value }))}
-                />
-              </div>
-
-              <button
-                className="btn-secondary"
-                onClick={testOrderLookup}
-                disabled={orderLookupLoading || !orderLookupDraft.orderReference.trim() || lookupReadyIntegrations.length === 0}
-              >
-                <RefreshCcw size={14} /> {orderLookupLoading ? 'Zoeken...' : 'Check orderstatus'}
-              </button>
-
-              {lookupReadyIntegrations.length === 0 && (
-                <p className="text-muted commerce-empty-note">
-                  Deze test werkt zodra Shopify, PrestaShop of WooCommerce live is gekoppeld.
+              <div className="glass-panel commerce-lookup-result">
+                <p>
+                  Ordervragen lopen nu via de concierge flow of supportteam. Zodra fase 2 klaar is, komt deze functie terug met encrypted secret management.
                 </p>
-              )}
-
-              {orderLookupResult && (
-                <div className="glass-panel commerce-lookup-result">
-                  {orderLookupResult?.found ? (
-                    <p>
-                      <strong>{orderLookupResult?.order?.orderReference}</strong> - {orderLookupResult?.order?.status}
-                      {orderLookupResult?.order?.paymentStatus
-                        ? ` (betaling: ${orderLookupResult.order.paymentStatus})`
-                        : ''}
-                    </p>
-                  ) : (
-                    <p>{orderLookupResult?.message || 'Geen order gevonden.'}</p>
-                  )}
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>

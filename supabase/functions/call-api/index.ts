@@ -1,12 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import OpenAI from "npm:openai@4";
 
-const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-key",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-};
-
 const SUPABASE_URL = String(Deno.env.get("SUPABASE_URL") || "").trim();
 const SUPABASE_ANON_KEY = String(Deno.env.get("SUPABASE_ANON_KEY") || "").trim();
 const SUPABASE_SERVICE_ROLE_KEY = String(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
@@ -17,20 +11,25 @@ const ELEVENLABS_API_KEY = String(Deno.env.get("ELEVENLABS_API_KEY") || "").trim
 const ELEVENLABS_MODEL_ID = String(Deno.env.get("ELEVENLABS_MODEL_ID") || "eleven_flash_v2_5").trim();
 const TWILIO_ACCOUNT_SID = String(Deno.env.get("TWILIO_ACCOUNT_SID") || "").trim();
 const TWILIO_AUTH_TOKEN = String(Deno.env.get("TWILIO_AUTH_TOKEN") || "").trim();
-const ADMIN_APPROVAL_KEY = String(Deno.env.get("ADMIN_APPROVAL_KEY") || "").trim();
 const ADMIN_USER_IDS = Array.from(
   new Set(
-    [
-      "77b79572-27b4-4f2d-ad4d-0cc8a27ea8d3",
-      ...String(Deno.env.get("ADMIN_USER_IDS") || "")
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean),
-    ],
+    String(Deno.env.get("ADMIN_USER_IDS") || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  ),
+);
+const CONFIGURED_ALLOWED_ORIGINS = Array.from(
+  new Set(
+    String(Deno.env.get("ALLOWED_ORIGINS") || "")
+      .split(",")
+      .map((entry) => entry.trim().replace(/\/$/, ""))
+      .filter(Boolean),
   ),
 );
 const ALLOW_SIMULATED_PROVISIONING =
   String(Deno.env.get("ALLOW_SIMULATED_PROVISIONING") || "true").toLowerCase() !== "false";
+const COMMERCE_LOOKUP_ENABLED = false;
 
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
@@ -134,6 +133,22 @@ const COST_ASSUMPTIONS = {
   minuteVendorCostEur: 0.12,
   taskVendorCostEur: 0.01,
   corpTaxRate: 0.19,
+};
+
+type WebsiteFaqHint = {
+  question: string;
+  answer: string;
+};
+
+type WebsiteSnapshot = {
+  requestedUrl: string;
+  finalUrl: string;
+  title: string;
+  description: string;
+  headings: string[];
+  textSnippet: string;
+  faqHints: WebsiteFaqHint[];
+  knowledgeSummary: string;
 };
 
 function nowIso() {
@@ -244,6 +259,246 @@ function normalizeAvailabilitySchedule(value: unknown) {
   return {};
 }
 
+function normalizeWebsiteUrl(value: unknown) {
+  const raw = safeText(value);
+  if (!raw) return "";
+
+  try {
+    const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const url = new URL(candidate);
+    if (!["http:", "https:"].includes(url.protocol)) return "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function isPrivateHostname(hostname: string) {
+  const host = safeText(hostname).toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "0.0.0.0" || host === "::1") return true;
+
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    const octets = host.split(".").map((part) => Number(part));
+    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true;
+
+    if (
+      octets[0] === 10 ||
+      octets[0] === 127 ||
+      octets[0] === 0 ||
+      (octets[0] === 169 && octets[1] === 254) ||
+      (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+      (octets[0] === 192 && octets[1] === 168)
+    ) {
+      return true;
+    }
+  }
+
+  if (host.includes(":")) {
+    return host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:");
+  }
+
+  return false;
+}
+
+function decodeHtmlEntities(input: string) {
+  return input
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function htmlToText(input: string) {
+  return decodeHtmlEntities(
+    String(input || "")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|section|article|li|h1|h2|h3|h4|h5|h6)>/gi, "\n")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueStrings(values: string[], limit = 6) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const text = safeText(value).replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+    if (result.length >= limit) break;
+  }
+
+  return result;
+}
+
+function extractMetaContent(html: string, selector: string) {
+  const patterns = [
+    new RegExp(`<meta[^>]+name=["']${selector}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${selector}["'][^>]*>`, "i"),
+    new RegExp(`<meta[^>]+property=["']${selector}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${selector}["'][^>]*>`, "i"),
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) return htmlToText(match[1]);
+  }
+
+  return "";
+}
+
+function extractHtmlMatches(html: string, pattern: RegExp, limit = 6) {
+  return uniqueStrings(
+    Array.from(html.matchAll(pattern))
+      .map((match) => htmlToText(match[1] || ""))
+      .filter(Boolean),
+    limit,
+  );
+}
+
+function buildWebsiteSnapshotFromHtml(html: string, requestedUrl: string, finalUrl: string): WebsiteSnapshot | null {
+  const title = htmlToText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+  const description = extractMetaContent(html, "description") || extractMetaContent(html, "og:description");
+  const headings = extractHtmlMatches(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi, 6);
+  const textContent = htmlToText(html).slice(0, 8000);
+  const sentences = uniqueStrings(
+    textContent
+      .split(/(?<=[.!?])\s+/)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence.length >= 35 && sentence.length <= 240),
+    5,
+  );
+  const questionLines = uniqueStrings(
+    [...headings, ...sentences].filter((line) =>
+      line.includes("?") || /^(hoe|wat|waar|wanneer|welke|wie|kan|kunnen|is|zijn)\b/i.test(line)
+    ),
+    3,
+  );
+
+  const faqHints = questionLines.map((question) => ({
+    question: question.endsWith("?") ? question : `${question}?`,
+    answer: "Beantwoord dit kort en concreet op basis van de website-informatie.",
+  }));
+
+  const knowledgeSummary = [
+    title ? `Website titel: ${title}` : "",
+    description ? `Meta beschrijving: ${description}` : "",
+    headings.length ? `Belangrijkste secties: ${headings.join(" | ")}` : "",
+    sentences.length ? `Samenvatting website-inhoud: ${sentences.slice(0, 3).join(" ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  if (!knowledgeSummary && !textContent) return null;
+
+  return {
+    requestedUrl,
+    finalUrl,
+    title,
+    description,
+    headings,
+    textSnippet: textContent.slice(0, 1800),
+    faqHints,
+    knowledgeSummary,
+  };
+}
+
+async function fetchWebsiteSnapshot(rawUrl: unknown): Promise<WebsiteSnapshot | null> {
+  const requestedUrl = normalizeWebsiteUrl(rawUrl);
+  if (!requestedUrl) return null;
+
+  try {
+    const hostname = new URL(requestedUrl).hostname;
+    if (isPrivateHostname(hostname)) return null;
+  } catch {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(requestedUrl, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const contentType = safeText(response.headers.get("content-type")).toLowerCase();
+    if (
+      contentType &&
+      !contentType.includes("text/html") &&
+      !contentType.includes("text/plain") &&
+      !contentType.includes("application/xhtml+xml")
+    ) {
+      return null;
+    }
+
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (Number.isFinite(contentLength) && contentLength > 1_000_000) return null;
+
+    const html = (await response.text()).slice(0, 200_000);
+    return buildWebsiteSnapshotFromHtml(html, requestedUrl, response.url || requestedUrl);
+  } catch (error) {
+    const message = (error as any)?.message || error;
+    console.warn("Website snapshot waarschuwing:", message);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function tryParseJsonObject(raw: unknown) {
+  const text = safeText(raw);
+  if (!text) return null;
+
+  const cleaned = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const attempts = [cleaned];
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    attempts.push(cleaned.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const candidate of attempts) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 function normalizeTemplates(value: unknown) {
   if (!value) return [];
   const rows = Array.isArray(value) ? value : [];
@@ -301,6 +556,61 @@ function assertServiceRoleAvailable() {
   }
 }
 
+function getAllowedOrigins() {
+  return Array.from(
+    new Set([
+      ...CONFIGURED_ALLOWED_ORIGINS,
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:4173",
+      "http://127.0.0.1:4173",
+    ]),
+  );
+}
+
+function resolveAllowedOrigin(req: Request) {
+  const origin = String(req.headers.get("origin") || "").trim().replace(/\/$/, "");
+  if (!origin) return "";
+  return getAllowedOrigins().includes(origin) ? origin : "";
+}
+
+function buildResponseHeaders(req: Request) {
+  const url = new URL(req.url);
+  const allowedOrigin = resolveAllowedOrigin(req);
+  const headers = new Headers({
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  });
+
+  if (allowedOrigin) {
+    headers.set("Access-Control-Allow-Origin", allowedOrigin);
+    headers.set("Vary", "Origin");
+  }
+
+  if (url.protocol === "https:") {
+    headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
+
+  return headers;
+}
+
+function withResponseHeaders(req: Request, response: Response) {
+  const merged = buildResponseHeaders(req);
+  response.headers.forEach((value, key) => {
+    merged.set(key, value);
+  });
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: merged,
+  });
+}
+
 function createDbClient(apiKey: string, accessToken: string | null = null) {
   return createClient(SUPABASE_URL, apiKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -310,18 +620,21 @@ function createDbClient(apiKey: string, accessToken: string | null = null) {
   });
 }
 
-function getDbClient(accessToken: string | null = null) {
+function getUserDbClient(accessToken: string) {
   assertSupabaseReady();
-
-  if (SUPABASE_SERVICE_ROLE_KEY) {
-    return createDbClient(SUPABASE_SERVICE_ROLE_KEY);
-  }
-
   if (!SUPABASE_ANON_KEY) {
     throw new Error("SUPABASE_ANON_KEY ontbreekt.");
   }
-
+  if (!accessToken) {
+    throw new Error("Bearer token ontbreekt voor user database client.");
+  }
   return createDbClient(SUPABASE_ANON_KEY, accessToken);
+}
+
+function getServiceDbClient() {
+  assertSupabaseReady();
+  assertServiceRoleAvailable();
+  return createDbClient(SUPABASE_SERVICE_ROLE_KEY);
 }
 
 function getAuthClient() {
@@ -333,7 +646,7 @@ function getAuthClient() {
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -388,24 +701,44 @@ async function requireUser(req: Request) {
   }
 }
 
-function isAdminRequest(req: Request) {
-  const providedKey = String(req.headers.get("x-admin-key") || "").trim();
-  return Boolean(ADMIN_APPROVAL_KEY && providedKey && providedKey === ADMIN_APPROVAL_KEY);
-}
-
-function isAdminUserId(userId: unknown) {
+function isBootstrapAdminUserId(userId: unknown) {
   const id = safeText(userId);
   return Boolean(id && ADMIN_USER_IDS.includes(id));
 }
 
+async function hasAdminAccess(userId: unknown) {
+  const id = safeText(userId);
+  if (!id) return false;
+  if (isBootstrapAdminUserId(id)) return true;
+  if (!SUPABASE_SERVICE_ROLE_KEY) return false;
+
+  try {
+    const serviceClient = getServiceDbClient();
+    const { data, error } = await serviceClient
+      .from("admin_users")
+      .select("user_id, role, active")
+      .eq("user_id", id)
+      .eq("active", true)
+      .maybeSingle();
+    if (error && !isMissingTableError(error)) throw error;
+    return Boolean(data?.user_id);
+  } catch (error) {
+    if (!isMissingTableError(error)) {
+      console.warn("Admin lookup waarschuwing:", (error as any)?.message || error);
+    }
+    return false;
+  }
+}
+
 async function requireAdminAccess(req: Request) {
   const auth = await requireUser(req);
-  if (!auth.error && auth.user && isAdminUserId(auth.user.id)) {
-    return { error: null, user: auth.user, token: auth.token, mode: "user" as const };
-  }
-
-  if (isAdminRequest(req)) {
-    return { error: null, user: auth.user || null, token: auth.token || "", mode: "key" as const };
+  if (!auth.error && auth.user && await hasAdminAccess(auth.user.id)) {
+    return {
+      error: null,
+      user: auth.user,
+      token: auth.token,
+      mode: isBootstrapAdminUserId(auth.user.id) ? "bootstrap" as const : "role" as const,
+    };
   }
 
   return { error: errorJson("Geen admintoegang.", 403), user: null, token: "", mode: "none" as const };
@@ -464,7 +797,11 @@ function onboardingFromPayload(
     goals: getText(["goals", "primaryGoal"], undefined),
     greeting: getText(["greeting"], undefined),
     knowledge: getText(["knowledge"], undefined),
-    websiteUrl: getText(["websiteUrl", "website"], undefined),
+    websiteUrl: hasKey(payload, "websiteUrl") || hasKey(payload, "website")
+      ? normalizeWebsiteUrl(payload.websiteUrl ?? payload.website)
+      : partial
+        ? undefined
+        : "",
     secondaryLanguage: getText(["secondaryLanguage"], undefined),
     roleDescription: getText(["roleDescription"], undefined),
     handoffRules: getText(["handoffRules"], undefined),
@@ -521,6 +858,7 @@ function buildAssistantPrompt(
   const company = safeProfile.company_name || safeAssistant.display_name || "dit bedrijf";
   const selectedNumber = safeNumber.e164 || "nog niet live";
   const websiteUrl = safeProfile.website_url || "niet ingevuld";
+  const knowledgeSummary = safeText(safeProfile.knowledge || "nog geen extra kennisbron ingesteld").slice(0, 1800);
   const roleDescription = safeProfile.role_description || "servicegerichte receptioniste";
   const handoffRules = safeProfile.handoff_rules || "stuur door bij spoed of complexe cases";
   const faqPreview = Array.isArray(faqs) && faqs.length > 0
@@ -547,12 +885,14 @@ function buildAssistantPrompt(
     `Gekozen stem: ${safeVoice.display_name || "standaard stem"}`,
     `Gekozen nummer: ${selectedNumber}`,
     `Beschikbaarheid: ${availabilityMode}`,
+    `Website- en kenniscontext: ${knowledgeSummary}`,
     `FAQ context: ${faqPreview}`,
     "Regels:",
     "- Geef korte, natuurlijke antwoorden.",
     "- Stel 1 vervolgvraag als informatie ontbreekt.",
     "- Bevestig belangrijke details hardop (naam, datum, tijd).",
-    "- Bij vragen over orderstatus: vraag ordernummer + e-mailadres en gebruik de gekoppelde webshop-integratie.",
+    "- Gebruik eerst de website-, kennis- en FAQ-context als waarheid. Verzin geen details die niet in de context staan.",
+    "- Bij vragen over orderstatus: leg uit dat secure webshop lookup tijdelijk via het supportteam loopt en noteer een terugbelverzoek als nodig.",
     "- Als iets onbekend is, zeg dat eerlijk en bied een terugbelnotitie aan.",
     "- Spreek standaard Nederlands, tenzij de beller duidelijk een andere taal gebruikt.",
   ].join("\n");
@@ -661,14 +1001,29 @@ function buildWizardChecklist(params: {
   const { assistant, profile, voice, faqs, channelSettings } = params;
 
   const identityDone = Boolean(assistant?.display_name && assistant?.avatar_key);
-  const websiteDone = Boolean(profile?.website_url && (profile?.goals || profile?.primary_goal || profile?.company_name));
+  const websiteDone = Boolean(safeText(profile?.website_url) && safeText(profile?.goals || profile?.primary_goal));
   const voiceDone = Boolean(voice?.voice_key);
-  const instructionsDone = Boolean(profile?.role_description || profile?.handoff_rules || (faqs?.length || 0) > 0);
+  const faqDoneCount = Array.isArray(faqs)
+    ? faqs.filter((entry) => safeText(entry?.question) && safeText(entry?.answer)).length
+    : 0;
+  const instructionsDone = Boolean(
+    safeText(profile?.role_description) && safeText(profile?.handoff_rules) && faqDoneCount > 0,
+  );
+  const availabilitySchedule = channelSettings?.availability_schedule &&
+      typeof channelSettings.availability_schedule === "object" &&
+      !Array.isArray(channelSettings.availability_schedule)
+    ? Object.values(channelSettings.availability_schedule)
+    : [];
+  const hasActiveSchedule = availabilitySchedule.some((slot: any) =>
+    slot &&
+    typeof slot === "object" &&
+    slot.enabled !== false &&
+    safeText(slot.start) &&
+    safeText(slot.end)
+  );
   const availabilityDone = Boolean(
     channelSettings?.availability_mode === "always" ||
-      (channelSettings?.availability_mode === "custom_hours" &&
-        channelSettings?.availability_schedule &&
-        Object.keys(channelSettings.availability_schedule).length > 0),
+      (channelSettings?.availability_mode === "custom_hours" && hasActiveSchedule),
   );
 
   const checklist = [
@@ -683,7 +1038,9 @@ function buildWizardChecklist(params: {
       label: "Website",
       done: websiteDone,
       description: websiteDone
-        ? "Website en hoofddoel zijn ingevuld."
+        ? safeText(profile?.knowledge)
+          ? "Website en hoofddoel zijn ingevuld en geanalyseerd."
+          : "Website en hoofddoel zijn ingevuld."
         : "Vul website en hulpdoel in.",
     },
     {
@@ -697,7 +1054,7 @@ function buildWizardChecklist(params: {
       label: "Instructies",
       done: instructionsDone,
       description: instructionsDone
-        ? "Rol en FAQ zijn ingesteld."
+        ? `Rol, handoff en ${faqDoneCount} FAQ${faqDoneCount === 1 ? "" : "'s"} zijn ingesteld.`
         : "Voeg rolregels en FAQ toe.",
     },
     {
@@ -712,8 +1069,9 @@ function buildWizardChecklist(params: {
 
   const fallbackStep = checklist.findIndex((entry) => !entry.done) + 1 || 5;
   const completedCount = checklist.filter((entry) => entry.done).length;
-  const resolvedStep = normalizeStep(assistant?.setup_step, fallbackStep || 1);
-  const completed = Boolean(assistant?.setup_completed) || completedCount === checklist.length;
+  const completed = completedCount === checklist.length;
+  const savedStep = normalizeStep(assistant?.setup_step, fallbackStep || 1);
+  const resolvedStep = completed ? checklist.length : Math.min(savedStep, fallbackStep || savedStep);
 
   return {
     step: resolvedStep,
@@ -847,6 +1205,161 @@ async function fetchTwilioOwnedNumbers() {
   }
 }
 
+function getFunctionBaseUrl(req: Request) {
+  const url = new URL(req.url);
+  const parts = url.pathname.split("/").filter(Boolean);
+  const fnIndex = parts.indexOf("call-api");
+  const baseParts = fnIndex >= 0 ? parts.slice(0, fnIndex + 1) : parts;
+  return `${url.protocol}//${url.host}/${baseParts.join("/")}`.replace(/\/$/, "");
+}
+
+function getTwilioAuthHeader() {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return "";
+  return `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`;
+}
+
+async function twilioApiRequest(path: string, options: { method?: string; body?: URLSearchParams } = {}) {
+  const authHeader = getTwilioAuthHeader();
+  if (!authHeader) throw new Error("Twilio credentials ontbreken.");
+
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}${path}`,
+    {
+      method: options.method || "GET",
+      headers: {
+        Authorization: authHeader,
+        ...(options.body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+      },
+      body: options.body?.toString(),
+    },
+  );
+
+  if (!response.ok) {
+    const reason = await response.text();
+    throw new Error(`Twilio request mislukt: ${reason.slice(0, 240)}`);
+  }
+
+  return response.json();
+}
+
+async function findOwnedTwilioNumberSid(targetE164: string) {
+  if (!targetE164 || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
+  const numbers = await fetchTwilioOwnedNumbers();
+  const normalizedTarget = normalizePhoneNumber(targetE164);
+  const match = numbers.find((row: Record<string, any>) => normalizePhoneNumber(row.e164) === normalizedTarget);
+  return match?.twilioPhoneSid || null;
+}
+
+async function configureTwilioNumber(phoneSid: string, baseUrl: string) {
+  if (!phoneSid) return;
+  const body = new URLSearchParams({
+    VoiceMethod: "POST",
+    VoiceUrl: `${baseUrl}/twilio/voice`,
+    StatusCallback: `${baseUrl}/twilio/status`,
+    StatusCallbackMethod: "POST",
+  });
+  await twilioApiRequest(`/IncomingPhoneNumbers/${encodeURIComponent(phoneSid)}.json`, {
+    method: "POST",
+    body,
+  });
+}
+
+async function parseTwilioFormRequest(req: Request) {
+  const rawBody = await req.text();
+  const params = new URLSearchParams(rawBody);
+  return {
+    rawBody,
+    params,
+    body: Object.fromEntries(params.entries()),
+  };
+}
+
+function toBase64(bytes: ArrayBuffer) {
+  let binary = "";
+  const view = new Uint8Array(bytes);
+  for (let index = 0; index < view.length; index += 1) {
+    binary += String.fromCharCode(view[index]);
+  }
+  return btoa(binary);
+}
+
+async function computeTwilioSignature(url: string, params: URLSearchParams) {
+  const sortedEntries = Array.from(params.entries()).sort(([leftKey, leftValue], [rightKey, rightValue]) => {
+    if (leftKey === rightKey) return leftValue.localeCompare(rightValue);
+    return leftKey.localeCompare(rightKey);
+  });
+
+  let payload = url;
+  for (const [key, value] of sortedEntries) {
+    payload += `${key}${value}`;
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(TWILIO_AUTH_TOKEN),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(payload));
+  return toBase64(signature);
+}
+
+function safeCompare(left: string, right: string) {
+  const a = String(left || "");
+  const b = String(right || "");
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    result |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+  return result === 0;
+}
+
+async function isValidTwilioSignature(req: Request, params: URLSearchParams) {
+  if (!TWILIO_AUTH_TOKEN) return false;
+  const expected = await computeTwilioSignature(req.url, params);
+  const received = String(req.headers.get("x-twilio-signature") || "").trim();
+  return safeCompare(expected, received);
+}
+
+function escapeXml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function buildTwimlResponse(parts: string[]) {
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?><Response>${parts.join("")}</Response>`, {
+    status: 200,
+    headers: { "Content-Type": "text/xml; charset=utf-8" },
+  });
+}
+
+function twimlSay(text: string, voice = "alice") {
+  return `<Say language="nl-NL" voice="${escapeXml(voice)}">${escapeXml(text)}</Say>`;
+}
+
+function twimlGather(action: string, inner: string, voice = "alice") {
+  return (
+    `<Gather input="speech" speechTimeout="auto" language="nl-NL" method="POST" action="${escapeXml(action)}">` +
+    `${inner || twimlSay("Ik luister.", voice)}` +
+    "</Gather>"
+  );
+}
+
+function twimlRedirect(url: string) {
+  return `<Redirect method="POST">${escapeXml(url)}</Redirect>`;
+}
+
+function twimlHangup() {
+  return "<Hangup/>";
+}
+
 function normalizeProvider(value: unknown) {
   const provider = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
   const canonicalMap: Record<string, string> = {
@@ -867,7 +1380,8 @@ function normalizeProvider(value: unknown) {
 }
 
 function supportsSelfServiceIntegration(provider: string) {
-  return ["shopify", "prestashop", "woocommerce"].includes(provider);
+  void provider;
+  return false;
 }
 
 function normalizeStoreUrl(value: unknown) {
@@ -881,6 +1395,8 @@ function normalizeStoreUrl(value: unknown) {
 
   try {
     const url = new URL(normalized);
+    if (url.protocol !== "https:") return "";
+    if (!url.hostname || isPrivateHostname(url.hostname)) return "";
     return `${url.protocol}//${url.host}`;
   } catch {
     return "";
@@ -902,12 +1418,9 @@ function sanitizeIntegration(integration: Record<string, any>) {
     provider: integration.provider,
     status: integration.status,
     storeUrl: integration.store_url,
-    hasAccessToken: Boolean(integration.access_token),
-    hasApiKey: Boolean(integration.api_key),
-    hasApiSecret: Boolean(integration.api_secret),
     lastSyncAt: integration.last_sync_at || null,
     updatedAt: integration.updated_at || null,
-    setupMode: safeText(metadata.setupMode, "self_service"),
+    setupMode: safeText(metadata.setupMode, "concierge"),
     setupNotes: safeText(metadata.setupNotes),
     contactEmail: safeText(metadata.contactEmail),
     requestedAt: safeText(metadata.requestedAt || integration.created_at),
@@ -953,7 +1466,6 @@ function formatLookupResult(result: Record<string, any>) {
     totalAmount: result.totalAmount || null,
     currency: result.currency || null,
     source: result.source || null,
-    raw: result.raw || null,
   };
 }
 
@@ -1188,15 +1700,15 @@ async function lookupOrderStatus(
 
     try {
       if (currentProvider === "shopify") {
-        const result = await lookupShopifyOrderStatus(integration, { orderReference, email });
+        const result: any = await lookupShopifyOrderStatus(integration, { orderReference, email });
         if (result.found || result.notFound) return result;
         lastError = result.error || lastError;
       } else if (currentProvider === "prestashop") {
-        const result = await lookupPrestashopOrderStatus(integration, { orderReference, email });
+        const result: any = await lookupPrestashopOrderStatus(integration, { orderReference, email });
         if (result.found || result.notFound) return result;
         lastError = result.error || lastError;
       } else if (currentProvider === "woocommerce") {
-        const result = await lookupWooCommerceOrderStatus(integration, { orderReference, email });
+        const result: any = await lookupWooCommerceOrderStatus(integration, { orderReference, email });
         if (result.found || result.notFound) return result;
         lastError = result.error || lastError;
       } else {
@@ -1262,8 +1774,8 @@ function buildOrderStatusReply(result: Record<string, any>) {
   return parts.join(" ");
 }
 
-async function runProvisioningJob(params: { dbClient: any; jobId: string }) {
-  const { dbClient, jobId } = params;
+async function runProvisioningJob(params: { dbClient: any; jobId: string; baseUrl: string }) {
+  const { dbClient, jobId, baseUrl } = params;
 
   const { data: job, error: jobError } = await dbClient.from("provisioning_jobs").select("*").eq("id", jobId).single();
   if (jobError) throw jobError;
@@ -1306,20 +1818,54 @@ async function runProvisioningJob(params: { dbClient: any; jobId: string }) {
     return { status: "failed", reason: "missing_voice_or_number" };
   }
 
-  if (!ALLOW_SIMULATED_PROVISIONING) {
+  let phoneSid = selectedNumber.twilio_phone_sid || null;
+  let provisioningMode = "simulated";
+
+  if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+    if (!phoneSid && selectedNumber?.e164) {
+      phoneSid = await findOwnedTwilioNumberSid(selectedNumber.e164);
+    }
+
+    if (!phoneSid) {
+      const needsAt = nowIso();
+      await dbClient.from("assistant_numbers").update({
+        status: "needs_number_reselect",
+        updated_at: needsAt,
+      }).eq("id", selectedNumber.id);
+
+      await dbClient.from("assistants").update({
+        live_status: "needs_number_reselect",
+        status: "needs_number_reselect",
+        updated_at: needsAt,
+      }).eq("id", assistant.id);
+
+      await dbClient.from("provisioning_jobs").update({
+        status: "needs_number_reselect",
+        error_message: "Gekozen nummer is niet gevonden in Twilio account.",
+        completed_at: needsAt,
+        updated_at: needsAt,
+      }).eq("id", jobId);
+
+      return { status: "needs_number_reselect" };
+    }
+
+    await configureTwilioNumber(phoneSid, baseUrl);
+    provisioningMode = "twilio_live";
+  } else if (!ALLOW_SIMULATED_PROVISIONING) {
     const failedAt = nowIso();
     await dbClient.from("provisioning_jobs").update({
       status: "failed",
-      error_message: "Simulated provisioning staat uit in instellingen.",
+      error_message: "Twilio credentials ontbreken en simulatie staat uit.",
       completed_at: failedAt,
       updated_at: failedAt,
     }).eq("id", jobId);
-    return { status: "failed", reason: "simulation_disabled" };
+    return { status: "failed", reason: "twilio_missing" };
   }
 
   const completedAt = nowIso();
   await dbClient.from("assistant_numbers").update({
-    status: "simulated_live",
+    twilio_phone_sid: phoneSid,
+    status: provisioningMode === "twilio_live" ? "live" : "simulated_live",
     linked_at: completedAt,
     updated_at: completedAt,
   }).eq("id", selectedNumber.id);
@@ -1354,8 +1900,9 @@ async function runProvisioningJob(params: { dbClient: any; jobId: string }) {
     completed_at: completedAt,
     updated_at: completedAt,
     result: {
-      mode: "simulated",
+      mode: provisioningMode,
       number: selectedNumber?.e164 || null,
+      phoneSid,
     },
   }).eq("id", jobId);
 
@@ -1366,13 +1913,14 @@ async function runProvisioningJob(params: { dbClient: any; jobId: string }) {
     quantity: 1,
     unit: "job",
     amount_eur: 0,
-    metadata: { mode: "simulated" },
+    metadata: { mode: provisioningMode },
     occurred_at: completedAt,
   });
 
   return {
     status: "success",
-    mode: "simulated",
+    mode: provisioningMode,
+    phoneSid,
     assistantId: assistant.id,
     number: selectedNumber?.e164 || null,
   };
@@ -1410,7 +1958,7 @@ async function handleAdminOverview(req: Request) {
 
   try {
     assertServiceRoleAvailable();
-    const dbClient = getDbClient(null);
+    const dbClient = getServiceDbClient();
 
     const { data: assistants, error: assistantsError } = await dbClient
       .from("assistants")
@@ -1637,7 +2185,7 @@ async function handleAdminProvisionRun(req: Request) {
 
   try {
     assertServiceRoleAvailable();
-    const dbClient = getDbClient(null);
+    const dbClient = getServiceDbClient();
     const body = await parseBody(req) as Record<string, unknown>;
     const assistantId = safeText(body?.assistantId);
     const jobId = safeText(body?.jobId);
@@ -1692,7 +2240,7 @@ async function handleAdminProvisionRun(req: Request) {
 
     if (!targetJobId) return errorJson("Kon geen provisioning job bepalen.", 404);
 
-    const result = await runProvisioningJob({ dbClient, jobId: targetJobId });
+    const result = await runProvisioningJob({ dbClient, jobId: targetJobId, baseUrl: getFunctionBaseUrl(req) });
     return json({
       success: true,
       jobId: targetJobId,
@@ -1744,6 +2292,7 @@ async function composeAssistantState(dbClient: any, userId: string) {
     channelSettings,
   });
   const avatar = getAvatarOption(assistant?.avatar_key);
+  const isAdmin = await hasAdminAccess(userId);
 
   return {
     assistant,
@@ -1772,6 +2321,10 @@ async function composeAssistantState(dbClient: any, userId: string) {
       availabilityMode: channelSettings?.availability_mode || "always",
       availabilitySchedule: channelSettings?.availability_schedule || {},
     },
+    viewer: {
+      userId,
+      isAdmin,
+    },
     faqItems,
     wizard,
   };
@@ -1785,7 +2338,7 @@ async function handleOnboardingSave(
   mode: "full" | "partial" = "full",
 ) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
     const rawPayload = (overridePayload || body || {}) as Record<string, unknown>;
@@ -1931,20 +2484,59 @@ async function handleOnboardingSave(
       }
     }
 
-    const profile = await fetchProfile(dbClient, assistant.id);
+    let profile = await fetchProfile(dbClient, assistant.id);
     const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
     const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
     const channelSettings = await fetchChannelSettings(dbClient, assistant.id);
     const faqItems = await fetchFaqEntries(dbClient, assistant.id);
     const planKey = payload.planKey || assistant.desired_plan || DEFAULT_PLAN.key;
     const setupStep = payload.setupStep !== undefined ? payload.setupStep : normalizeStep(assistant.setup_step, 1);
-    const setupCompleted = payload.setupCompleted !== undefined
+    let setupCompleted = payload.setupCompleted !== undefined
       ? payload.setupCompleted
       : Boolean(assistant.setup_completed);
 
+    const shouldRefreshWebsiteKnowledge = Boolean(
+      safeText(profile?.website_url) &&
+      payload.knowledge === undefined &&
+      (payload.websiteUrl !== undefined || !safeText(profile?.knowledge)),
+    );
+
+    if (shouldRefreshWebsiteKnowledge) {
+      const websiteSnapshot = await fetchWebsiteSnapshot(profile?.website_url);
+      if (websiteSnapshot?.knowledgeSummary && websiteSnapshot.knowledgeSummary !== safeText(profile?.knowledge)) {
+        const { error: knowledgeError } = await dbClient
+          .from("assistant_profiles")
+          .update({
+            knowledge: websiteSnapshot.knowledgeSummary,
+            updated_at: nowIso(),
+          })
+          .eq("assistant_id", assistant.id);
+        if (knowledgeError) throw knowledgeError;
+        profile = await fetchProfile(dbClient, assistant.id);
+      }
+    }
+
+    const assistantDraft = {
+      ...assistant,
+      display_name: assistantName || companyName,
+      avatar_key: avatar.key,
+      desired_plan: planKey,
+      setup_step: setupStep,
+      setup_completed: setupCompleted,
+    };
+    const wizardSnapshot = buildWizardChecklist({
+      assistant: assistantDraft,
+      profile,
+      voice: selectedVoice,
+      faqs: faqItems,
+      channelSettings,
+    });
+    const resolvedSetupStep = wizardSnapshot.step;
+    setupCompleted = wizardSnapshot.completed;
+
     const prompt = buildAssistantPrompt({
       profile,
-      assistant,
+      assistant: assistantDraft,
       voice: selectedVoice,
       number: selectedNumber,
       channelSettings,
@@ -1957,7 +2549,7 @@ async function handleOnboardingSave(
       desired_plan: planKey,
       prompt,
       status: "configured",
-      setup_step: setupStep,
+      setup_step: resolvedSetupStep,
       setup_completed: setupCompleted,
       updated_at: nowIso(),
     }).eq("id", assistant.id).select("*").single();
@@ -1970,7 +2562,7 @@ async function handleOnboardingSave(
       quantity: 1,
       unit: "event",
       amount_eur: 0,
-      metadata: { setupStep },
+      metadata: { setupStep: resolvedSetupStep },
       occurred_at: nowIso(),
     });
 
@@ -1979,8 +2571,8 @@ async function handleOnboardingSave(
       success: true,
       mode,
       prompt,
-      assistant: updatedAssistant,
       ...state,
+      assistant: updatedAssistant,
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -1993,7 +2585,7 @@ async function handleOnboardingStepSave(req: Request, user: any, accessToken: st
 
 async function handleOnboardingProgress(user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const state = await composeAssistantState(dbClient, user.id);
     return json({
       success: true,
@@ -2009,7 +2601,7 @@ async function handleOnboardingProgress(user: any, accessToken: string) {
 
 async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
     const step = safeText(body.step, "identiteit").toLowerCase();
@@ -2019,6 +2611,9 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
     const assistantName = safeText(body.assistantName || assistant.display_name, companyName);
     const businessType = safeText(body.businessType || profile?.business_type, "dienstverlener");
     const primaryGoal = safeText(body.primaryGoal || profile?.goals, "vragen beantwoorden en terugbelverzoeken noteren");
+    const websiteUrl = normalizeWebsiteUrl(body.websiteUrl || profile?.website_url);
+    const websiteSnapshot = websiteUrl ? await fetchWebsiteSnapshot(websiteUrl) : null;
+    const websiteSummary = safeText(profile?.knowledge || websiteSnapshot?.knowledgeSummary);
 
     const fallbackSuggestions: Record<string, unknown> = {
       assistantNameSuggestions: [
@@ -2026,20 +2621,22 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
         `${assistantName || companyName} Support`,
         `${companyName} Telefoniste`,
       ],
-      roleDescription: `Je bent de vriendelijke telefonische assistent van ${companyName}. Je helpt bellers snel, duidelijk en rustig.`,
+      roleDescription: `Je bent de vriendelijke telefonische assistent van ${companyName}. Je helpt bellers snel, duidelijk en rustig${websiteSnapshot?.description ? `, met kennis van de website-inhoud: ${websiteSnapshot.description}` : "."}`,
       handoffRules:
         "Bij spoed, klachten of onduidelijkheid verbind je direct door of noteer je een terugbelverzoek met naam en telefoonnummer.",
       primaryGoal,
-      faqItems: [
-        {
-          question: `Wat doet ${companyName}?`,
-          answer: `${companyName} is actief als ${businessType}. We helpen klanten met duidelijke informatie en snelle opvolging.`,
-        },
-        {
-          question: "Hoe snel krijg ik reactie?",
-          answer: "Je krijgt zo snel mogelijk reactie van het team, meestal binnen één werkdag.",
-        },
-      ],
+      faqItems: websiteSnapshot?.faqHints?.length
+        ? websiteSnapshot.faqHints
+        : [
+          {
+            question: `Wat doet ${companyName}?`,
+            answer: `${companyName} is actief als ${businessType}. We helpen klanten met duidelijke informatie en snelle opvolging.`,
+          },
+          {
+            question: "Hoe snel krijg ik reactie?",
+            answer: "Je krijgt zo snel mogelijk reactie van het team, meestal binnen één werkdag.",
+          },
+        ],
       smsTemplates: [
         {
           title: "Bevestiging",
@@ -2047,6 +2644,8 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
           text: `Bedankt voor je gesprek met ${companyName}. We komen zo snel mogelijk bij je terug.`,
         },
       ],
+      knowledge: websiteSummary,
+      websiteSummary,
     };
 
     let suggestions = fallbackSuggestions;
@@ -2055,12 +2654,18 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
       try {
         const completion = await openai.chat.completions.create({
           model: OPENAI_MODEL,
-          temperature: 0.4,
+          temperature: 0.35,
+          response_format: { type: "json_object" },
           messages: [
             {
               role: "system",
-              content:
-                "Geef JSON zonder markdown met heldere onboarding suggesties in het Nederlands voor een AI telefoonassistent.",
+              content: [
+                "Geef alleen geldig JSON terug zonder markdown.",
+                "Je maakt onboarding suggesties in het Nederlands voor een AI telefoonassistent.",
+                "Baseer je antwoorden alleen op de aangeleverde context en website-samenvatting.",
+                "Verzin geen prijzen, openingstijden of beleid dat niet expliciet uit de context volgt.",
+                "Verwachte JSON keys: assistantNameSuggestions (array), roleDescription (string), handoffRules (string), primaryGoal (string), faqItems (array), smsTemplates (array), knowledge (string).",
+              ].join(" "),
             },
             {
               role: "user",
@@ -2070,12 +2675,18 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
                 assistantName,
                 businessType,
                 primaryGoal,
+                websiteUrl,
+                websiteSummary,
+                websiteTitle: websiteSnapshot?.title || "",
+                websiteDescription: websiteSnapshot?.description || "",
+                websiteHeadings: websiteSnapshot?.headings || [],
+                websiteSnippet: websiteSnapshot?.textSnippet || "",
               }),
             },
           ],
         });
         const raw = completion.choices?.[0]?.message?.content || "";
-        const parsed = JSON.parse(raw);
+        const parsed = tryParseJsonObject(raw);
         if (parsed && typeof parsed === "object") {
           suggestions = {
             ...fallbackSuggestions,
@@ -2091,6 +2702,15 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
       success: true,
       step,
       suggestions,
+      websiteInsights: websiteSnapshot
+        ? {
+          requestedUrl: websiteSnapshot.requestedUrl,
+          finalUrl: websiteSnapshot.finalUrl,
+          title: websiteSnapshot.title,
+          description: websiteSnapshot.description,
+          headings: websiteSnapshot.headings,
+        }
+        : null,
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -2099,7 +2719,7 @@ async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: s
 
 async function handleAssistantState(user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const state = await composeAssistantState(dbClient, user.id);
     return json(state);
   } catch (error) {
@@ -2109,7 +2729,7 @@ async function handleAssistantState(user: any, accessToken: string) {
 
 async function handleActivationStartTrial(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
     const plan = getPlanConfig(body?.planKey || assistant.desired_plan);
@@ -2193,7 +2813,7 @@ async function handleActivationStartTrial(req: Request, user: any, accessToken: 
 
 async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
     const inputText = safeText(body?.inputText || body?.text);
@@ -2250,21 +2870,12 @@ async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
       assistant.prompt || buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
 
     const started = Date.now();
-    const orderIntent = detectOrderLookupIntent(inputText);
-    let orderLookupResult: Record<string, any> | null = null;
-
-    if (orderIntent) {
-      orderLookupResult = await lookupOrderStatus(dbClient, assistant.id, orderIntent);
-    }
-
-    const assistantText = orderLookupResult
-      ? buildOrderStatusReply(orderLookupResult)
-      : await generateReply({
-        systemPrompt,
-        history,
-        userText: inputText,
-        fallbackCompanyName: profile?.company_name || assistant.display_name || "jouw bedrijf",
-      });
+    const assistantText = await generateReply({
+      systemPrompt,
+      history,
+      userText: inputText,
+      fallbackCompanyName: profile?.company_name || assistant.display_name || "jouw bedrijf",
+    });
     const latencyMs = Date.now() - started;
     const audioDataUrl = await createWebCallAudio(assistantText, selectedVoice || {});
 
@@ -2291,17 +2902,11 @@ async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
         input_text: null,
         output_text: assistantText,
         latency_ms: latencyMs,
-        audio_data_url: audioDataUrl,
+        audio_data_url: null,
         debug_steps: {
           phases: ["listening", "thinking", "speaking"],
-          model: orderLookupResult ? "commerce_lookup" : openai ? OPENAI_MODEL : "fallback",
-          commerceLookup: orderLookupResult
-            ? {
-              attempted: true,
-              found: Boolean(orderLookupResult.found),
-              provider: orderLookupResult.provider || null,
-            }
-            : null,
+          model: openai ? OPENAI_MODEL : "fallback",
+          commerceLookup: COMMERCE_LOOKUP_ENABLED ? { attempted: true } : null,
         },
         created_at: nowIso(),
       },
@@ -2335,7 +2940,12 @@ async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
         { key: "thinking", label: "AI denkt na", done: true },
         { key: "speaking", label: "AI spreekt", done: true },
       ],
-      commerceLookup: orderLookupResult || null,
+      commerceLookup: COMMERCE_LOOKUP_ENABLED
+        ? { enabled: true }
+        : {
+          enabled: false,
+          message: "Secure commerce lookup is tijdelijk uitgeschakeld in productie.",
+        },
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -2344,7 +2954,7 @@ async function handleWebCallTurn(req: Request, user: any, accessToken: string) {
 
 async function handleInvoiceRequest(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
 
@@ -2425,7 +3035,7 @@ async function handleAdminApprove(req: Request) {
 
   try {
     assertServiceRoleAvailable();
-    const dbClient = getDbClient(null);
+    const dbClient = getServiceDbClient();
     const body = await parseBody(req) as Record<string, unknown>;
     const invoiceId = safeText(body?.invoiceId);
     const userId = safeText(body?.userId);
@@ -2492,7 +3102,11 @@ async function handleAdminApprove(req: Request) {
     const shouldRunNow = body?.runNow !== false;
     let provisioningResult: any = { status: "queued" };
     if (shouldRunNow) {
-      provisioningResult = await runProvisioningJob({ dbClient, jobId: provisioningJob.id });
+      provisioningResult = await runProvisioningJob({
+        dbClient,
+        jobId: provisioningJob.id,
+        baseUrl: getFunctionBaseUrl(req),
+      });
     }
 
     return json({
@@ -2507,19 +3121,24 @@ async function handleAdminApprove(req: Request) {
   }
 }
 
-async function handleProvisionRun(user: any, accessToken: string) {
+async function handleProvisionRun(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
-    const assistant = await ensureAssistant(dbClient, user.id);
+    const userDbClient = getUserDbClient(accessToken);
+    const serviceDbClient = getServiceDbClient();
+    const assistant = await ensureAssistant(userDbClient, user.id);
 
-    const { data: job, error: jobError } = await dbClient.from("provisioning_jobs").select("*").eq("assistant_id", assistant.id).in(
+    const { data: job, error: jobError } = await userDbClient.from("provisioning_jobs").select("*").eq("assistant_id", assistant.id).in(
       "status",
       ["queued", "failed", "needs_number_reselect"],
     ).order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (jobError) throw jobError;
     if (!job) return errorJson("Geen provisioning job gevonden voor deze gebruiker.", 404);
 
-    const result = await runProvisioningJob({ dbClient, jobId: job.id });
+    const result = await runProvisioningJob({
+      dbClient: serviceDbClient,
+      jobId: job.id,
+      baseUrl: getFunctionBaseUrl(req),
+    });
     return json({ success: true, jobId: job.id, result });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -2528,7 +3147,7 @@ async function handleProvisionRun(user: any, accessToken: string) {
 
 async function handleUsageSummary(user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const plan = getPlanConfig(assistant.desired_plan);
 
@@ -2590,7 +3209,7 @@ async function handleUsageSummary(user: any, accessToken: string) {
 
 async function handleIntegrationList(user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const rows = await fetchIntegrationsForAssistant(dbClient, assistant.id);
     return json({
@@ -2604,24 +3223,22 @@ async function handleIntegrationList(user: any, accessToken: string) {
 
 async function handleIntegrationConnect(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
 
     const provider = normalizeProvider(body.provider);
     const storeUrl = normalizeStoreUrl(body.storeUrl || body.store_url);
-    const accessTokenValue = safeText(body.accessToken || body.access_token);
-    const apiKey = safeText(body.apiKey || body.api_key);
-    const apiSecret = safeText(body.apiSecret || body.api_secret);
-    const webhookSecret = safeText(body.webhookSecret || body.webhook_secret);
-    const requestedModeRaw = safeText(body.mode || body.setupMode);
-    let setupMode =
-      requestedModeRaw === "self_service" ||
-      accessTokenValue ||
-      apiKey ||
-      apiSecret
-        ? "self_service"
-        : "concierge";
+    const containsCredentials = [
+      "accessToken",
+      "access_token",
+      "apiKey",
+      "api_key",
+      "apiSecret",
+      "api_secret",
+      "webhookSecret",
+      "webhook_secret",
+    ].some((field) => hasKey(body, field));
     const contactEmail = safeText(body.contactEmail || body.contact_email || user?.email);
     const setupNotes = safeText(body.setupNotes || body.notes || body.note);
 
@@ -2629,34 +3246,21 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
       return errorJson("provider is verplicht (shopify, prestashop, woocommerce, magento, bigcommerce, stripe).", 400);
     }
     if (!storeUrl) {
-      return errorJson("storeUrl is verplicht.", 400);
+      return errorJson("storeUrl is verplicht en moet een publieke https-URL zijn.", 400);
     }
-
-    if (setupMode === "self_service" && !supportsSelfServiceIntegration(provider)) {
-      setupMode = "concierge";
-    }
-
-    if (setupMode === "self_service" && provider === "shopify" && !accessTokenValue) {
-      return errorJson("Voor Shopify is accessToken verplicht.", 400);
-    }
-    if (setupMode === "self_service" && provider === "prestashop" && !apiKey) {
-      return errorJson("Voor PrestaShop is apiKey verplicht.", 400);
-    }
-    if (setupMode === "self_service" && provider === "woocommerce" && (!apiKey || !apiSecret)) {
-      return errorJson("Voor WooCommerce zijn consumer key en consumer secret verplicht.", 400);
+    if (containsCredentials) {
+      return errorJson(
+        "Credentials mogen niet meer via /integrations/connect worden ingestuurd. Gebruik alleen provider, storeUrl, contactEmail en setupNotes.",
+        400,
+      );
     }
 
     const metadata = {
-      setupMode,
+      setupMode: "concierge",
       contactEmail,
       setupNotes,
       requestedAt: nowIso(),
-      modeRequested: requestedModeRaw || null,
-      modeFallback:
-        requestedModeRaw === "self_service" && setupMode === "concierge"
-          ? "self_service_not_supported_for_provider"
-          : null,
-      managedBy: setupMode === "concierge" ? "admin_after_request" : "self_service",
+      managedBy: "admin_after_request",
     };
 
     const { data: saved, error } = await dbClient
@@ -2666,14 +3270,14 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
           assistant_id: assistant.id,
           user_id: user.id,
           provider,
-          status: setupMode === "self_service" ? "connected" : "pending_setup",
+          status: "pending_setup",
           store_url: storeUrl,
-          access_token: setupMode === "self_service" ? accessTokenValue || null : null,
-          api_key: setupMode === "self_service" ? apiKey || null : null,
-          api_secret: setupMode === "self_service" ? apiSecret || null : null,
-          webhook_secret: webhookSecret || null,
+          access_token: null,
+          api_key: null,
+          api_secret: null,
+          webhook_secret: null,
           metadata,
-          last_sync_at: setupMode === "self_service" ? nowIso() : null,
+          last_sync_at: null,
           updated_at: nowIso(),
         },
         { onConflict: "assistant_id,provider" },
@@ -2685,7 +3289,7 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
 
     return json({
       success: true,
-      mode: setupMode,
+      mode: "concierge",
       integration: sanitizeIntegration(saved),
     });
   } catch (error) {
@@ -2695,7 +3299,7 @@ async function handleIntegrationConnect(req: Request, user: any, accessToken: st
 
 async function handleIntegrationDisconnect(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
+    const dbClient = getUserDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
     const provider = normalizeProvider(body.provider);
@@ -2708,6 +3312,11 @@ async function handleIntegrationDisconnect(req: Request, user: any, accessToken:
       .from("commerce_integrations")
       .update({
         status: "disconnected",
+        access_token: null,
+        api_key: null,
+        api_secret: null,
+        webhook_secret: null,
+        last_sync_at: null,
         updated_at: nowIso(),
       })
       .eq("assistant_id", assistant.id)
@@ -2735,20 +3344,26 @@ async function handleAdminIntegrationComplete(req: Request) {
 
   try {
     assertServiceRoleAvailable();
-    const dbClient = getDbClient(null);
+    const dbClient = getServiceDbClient();
     const body = await parseBody(req) as Record<string, unknown>;
 
     const integrationId = safeText(body.integrationId);
     const assistantId = safeText(body.assistantId);
     const provider = normalizeProvider(body.provider);
     const storeUrl = normalizeStoreUrl(body.storeUrl || body.store_url);
-    const accessTokenValue = safeText(body.accessToken || body.access_token);
-    const apiKey = safeText(body.apiKey || body.api_key);
-    const apiSecret = safeText(body.apiSecret || body.api_secret);
-    const webhookSecret = safeText(body.webhookSecret || body.webhook_secret);
     const contactEmail = safeText(body.contactEmail || body.contact_email);
     const setupNotes = safeText(body.setupNotes || body.notes);
     const adminNotes = safeText(body.adminNotes || body.admin_notes);
+    const containsCredentials = [
+      "accessToken",
+      "access_token",
+      "apiKey",
+      "api_key",
+      "apiSecret",
+      "api_secret",
+      "webhookSecret",
+      "webhook_secret",
+    ].some((field) => hasKey(body, field));
 
     let existingIntegration: Record<string, any> | null = null;
 
@@ -2774,15 +3389,11 @@ async function handleAdminIntegrationComplete(req: Request) {
     if (!resolvedAssistantId || !resolvedProvider || !resolvedStoreUrl) {
       return errorJson("assistantId, provider en storeUrl zijn verplicht voor admin shop setup.", 400);
     }
-
-    if (resolvedProvider === "shopify" && !accessTokenValue) {
-      return errorJson("Voor Shopify is accessToken verplicht.", 400);
-    }
-    if (resolvedProvider === "prestashop" && !apiKey) {
-      return errorJson("Voor PrestaShop is apiKey verplicht.", 400);
-    }
-    if (resolvedProvider === "woocommerce" && (!apiKey || !apiSecret)) {
-      return errorJson("Voor WooCommerce zijn consumer key en consumer secret verplicht.", 400);
+    if (containsCredentials) {
+      return errorJson(
+        "Admin shop setup bewaart geen plaintext credentials meer. Rond de setup metadata-only af en beheer secrets buiten de app-database.",
+        400,
+      );
     }
 
     const { data: assistant, error: assistantError } = await dbClient
@@ -2800,11 +3411,9 @@ async function handleAdminIntegrationComplete(req: Request) {
         ? existingIntegration.metadata
         : {};
 
-    const defaultSetupMode = supportsSelfServiceIntegration(resolvedProvider) ? "self_service" : "concierge";
-
     const metadata = {
       ...previousMetadata,
-      setupMode: previousMetadata.setupMode || defaultSetupMode,
+      setupMode: "concierge",
       contactEmail: contactEmail || previousMetadata.contactEmail || null,
       setupNotes: setupNotes || previousMetadata.setupNotes || null,
       adminNotes: adminNotes || previousMetadata.adminNotes || null,
@@ -2823,12 +3432,12 @@ async function handleAdminIntegrationComplete(req: Request) {
           provider: resolvedProvider,
           status: "connected",
           store_url: resolvedStoreUrl,
-          access_token: resolvedProvider === "shopify" ? accessTokenValue : null,
-          api_key: resolvedProvider !== "shopify" ? apiKey || null : null,
-          api_secret: resolvedProvider === "woocommerce" ? apiSecret : null,
-          webhook_secret: webhookSecret || existingIntegration?.webhook_secret || null,
+          access_token: null,
+          api_key: null,
+          api_secret: null,
+          webhook_secret: null,
           metadata,
-          last_sync_at: nowIso(),
+          last_sync_at: null,
           updated_at: nowIso(),
         },
         { onConflict: "assistant_id,provider" },
@@ -2849,216 +3458,479 @@ async function handleAdminIntegrationComplete(req: Request) {
 
 async function handleIntegrationOrderStatus(req: Request, user: any, accessToken: string) {
   try {
-    const dbClient = getDbClient(accessToken);
-    const assistant = await ensureAssistant(dbClient, user.id);
-    const body = await parseBody(req) as Record<string, unknown>;
-
-    const lookup = await lookupOrderStatus(dbClient, assistant.id, {
-      provider: body.provider,
-      orderReference: body.orderReference || body.orderNumber || body.reference,
-      email: body.email,
-    });
-
-    if (lookup.error) {
-      return errorJson(lookup.error, 400);
-    }
-
-    if (!lookup.found) {
-      return json({
-        success: true,
-        found: false,
-        orderReference: lookup.orderReference || null,
-        message: `Geen bestelling gevonden voor ${lookup.orderReference || "de opgegeven referentie"}.`,
-      });
-    }
-
-    await upsertUsage(dbClient, {
-      assistant_id: assistant.id,
-      user_id: user.id,
-      usage_type: "order_status_lookup",
-      quantity: 1,
-      unit: "event",
-      amount_eur: 0,
-      metadata: {
-        provider: lookup.provider,
-        orderReference: lookup.orderReference,
-      },
-      occurred_at: nowIso(),
-    });
-
+    void req;
+    void user;
+    void accessToken;
     return json({
-      success: true,
-      found: true,
-      order: lookup,
-      assistantText: buildOrderStatusReply(lookup),
-    });
+      success: false,
+      code: "feature_unavailable",
+      message:
+        "Secure commerce lookup is tijdelijk uitgeschakeld. Dien alleen een koppelaanvraag in; live orderstatus lookup volgt in fase 2 met encrypted secret management.",
+    }, 503);
   } catch (error) {
     return dbErrorToResponse(error);
   }
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+async function authenticateTwilioWebhook(req: Request) {
+  if (!TWILIO_AUTH_TOKEN) {
+    return {
+      error: new Response("Twilio auth token ontbreekt.", { status: 503 }),
+      body: null,
+    };
   }
 
+  const parsed = await parseTwilioFormRequest(req);
+  const valid = await isValidTwilioSignature(req, parsed.params);
+  if (!valid) {
+    return {
+      error: new Response("Forbidden", { status: 403 }),
+      body: null,
+    };
+  }
+
+  return {
+    error: null,
+    body: parsed.body,
+  };
+}
+
+async function handleTwilioVoice(req: Request) {
+  const auth = await authenticateTwilioWebhook(req);
+  if (auth.error) return auth.error;
+
   try {
-    const method = req.method.toUpperCase();
-    const path = getRoutePath(req);
+    const dbClient = getServiceDbClient();
+    const body = auth.body || {};
+    const to = normalizePhoneNumber(body.To);
+    const from = normalizePhoneNumber(body.From);
+    const callSid = safeText(body.CallSid);
 
-    if (method === "GET" && path === "/health") {
-      return json({
-        ok: true,
-        service: "ai-hub-call-api-edge",
-        now: nowIso(),
-        features: {
-          openai: Boolean(openai),
-          elevenlabs: Boolean(ELEVENLABS_API_KEY),
-          twilio: Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN),
-          supabaseServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
-          mode: "supabase-only",
-        },
-      });
+    if (!callSid || !to) {
+      return buildTwimlResponse([
+        twimlSay("Ongeldige call gegevens ontvangen."),
+        twimlHangup(),
+      ]);
     }
 
-    if (method === "GET" && path === "/voices/options") {
-      return json(VOICE_OPTIONS);
+    const { data: numberRow, error: numberError } = await dbClient
+      .from("assistant_numbers")
+      .select("*")
+      .eq("e164", to)
+      .eq("selected", true)
+      .maybeSingle();
+    if (numberError) throw numberError;
+
+    if (!numberRow) {
+      return buildTwimlResponse([
+        twimlSay("Dit nummer is nog niet actief."),
+        twimlHangup(),
+      ]);
     }
 
-    if (method === "GET" && path === "/avatars/options") {
-      return json(AVATAR_OPTIONS);
+    const { data: assistant, error: assistantError } = await dbClient
+      .from("assistants")
+      .select("*")
+      .eq("id", numberRow.assistant_id)
+      .single();
+    if (assistantError) throw assistantError;
+
+    const profile = await fetchProfile(dbClient, assistant.id);
+    const greeting =
+      profile?.greeting ||
+      `Goedemiddag, je spreekt met de AI assistent van ${profile?.company_name || assistant.display_name || "ons bedrijf"}. Waarmee kan ik helpen?`;
+
+    await dbClient.from("call_sessions").upsert(
+      {
+        assistant_id: assistant.id,
+        user_id: assistant.user_id,
+        call_sid: callSid,
+        from_number: from,
+        to_number: to,
+        status: "in_progress",
+        started_at: nowIso(),
+        updated_at: nowIso(),
+      },
+      { onConflict: "call_sid" },
+    );
+
+    const turnUrl = `${getFunctionBaseUrl(req)}/twilio/turn?callSid=${encodeURIComponent(callSid)}`;
+    return buildTwimlResponse([
+      twimlSay(greeting),
+      twimlGather(turnUrl, twimlSay("Ik luister.")),
+      twimlRedirect(turnUrl),
+    ]);
+  } catch (error) {
+    console.error("Twilio /voice fout:", error);
+    return buildTwimlResponse([
+      twimlSay("Er is een fout opgetreden. Probeer later opnieuw."),
+      twimlHangup(),
+    ]);
+  }
+}
+
+async function handleTwilioTurn(req: Request) {
+  const auth = await authenticateTwilioWebhook(req);
+  if (auth.error) return auth.error;
+
+  try {
+    const dbClient = getServiceDbClient();
+    const body = auth.body || {};
+    const url = new URL(req.url);
+    const callSid = safeText(url.searchParams.get("callSid") || body.CallSid);
+    const speech = safeText(body.SpeechResult);
+
+    const { data: callSession, error: sessionError } = await dbClient
+      .from("call_sessions")
+      .select("*")
+      .eq("call_sid", callSid)
+      .maybeSingle();
+    if (sessionError) throw sessionError;
+
+    if (!callSession) {
+      return buildTwimlResponse([
+        twimlSay("Sessie niet gevonden."),
+        twimlHangup(),
+      ]);
     }
 
-    if (method === "GET" && path === "/pricing/plans") {
-      const plans = Object.values(PLAN_CATALOG).map((plan) => ({
-        ...plan,
-        metrics: estimatePlanMetrics(plan),
-      }));
-      return json({ plans, assumptions: COST_ASSUMPTIONS });
+    const { data: assistant, error: assistantError } = await dbClient
+      .from("assistants")
+      .select("*")
+      .eq("id", callSession.assistant_id)
+      .single();
+    if (assistantError) throw assistantError;
+
+    const profile = await fetchProfile(dbClient, assistant.id);
+    const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
+    const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
+
+    const { data: turns, error: turnsError } = await dbClient
+      .from("call_turns")
+      .select("*")
+      .eq("call_session_id", callSession.id)
+      .order("turn_index", { ascending: true });
+    if (turnsError) throw turnsError;
+
+    const turnHistory = (turns || []).map((turn: Record<string, any>) => ({
+      role: turn.role,
+      content: turn.response_text || turn.transcript || "",
+    }));
+
+    const userText = speech || "Stilte";
+    const systemPrompt =
+      assistant.prompt || buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
+    const answer = speech
+      ? await generateReply({
+        systemPrompt,
+        history: turnHistory,
+        userText,
+        fallbackCompanyName: profile?.company_name || assistant.display_name || "ons bedrijf",
+      })
+      : "Ik heb je niet goed verstaan. Kun je je vraag herhalen?";
+
+    const turnBaseIndex = (turns || []).length;
+    await dbClient.from("call_turns").insert([
+      {
+        call_session_id: callSession.id,
+        assistant_id: assistant.id,
+        user_id: assistant.user_id,
+        turn_index: turnBaseIndex + 1,
+        role: "user",
+        transcript: userText,
+        response_text: null,
+        created_at: nowIso(),
+      },
+      {
+        call_session_id: callSession.id,
+        assistant_id: assistant.id,
+        user_id: assistant.user_id,
+        turn_index: turnBaseIndex + 2,
+        role: "assistant",
+        transcript: null,
+        response_text: answer,
+        created_at: nowIso(),
+      },
+    ]);
+
+    await dbClient.from("call_sessions").update({ updated_at: nowIso() }).eq("id", callSession.id);
+
+    await upsertUsage(dbClient, {
+      assistant_id: assistant.id,
+      user_id: assistant.user_id,
+      usage_type: "call_task",
+      quantity: 1,
+      unit: "task",
+      amount_eur: 0,
+      metadata: { callSid },
+      occurred_at: nowIso(),
+    });
+
+    const shouldEnd = /\b(doei|tot ziens|hang op|bedankt dat was alles)\b/i.test(userText);
+    const voiceName = selectedVoice?.twilio_voice || "alice";
+    const turnUrl = `${getFunctionBaseUrl(req)}/twilio/turn?callSid=${encodeURIComponent(callSid)}`;
+
+    if (shouldEnd) {
+      await dbClient
+        .from("call_sessions")
+        .update({ status: "completed", ended_at: nowIso(), updated_at: nowIso() })
+        .eq("id", callSession.id);
+
+      return buildTwimlResponse([
+        twimlSay(answer, voiceName),
+        twimlSay("Fijn gesprek. Tot ziens.", voiceName),
+        twimlHangup(),
+      ]);
     }
 
-    if (method === "GET" && path === "/numbers/options") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      const owned = await fetchTwilioOwnedNumbers();
-      return json(owned.length > 0 ? owned : DEFAULT_NUMBERS);
+    return buildTwimlResponse([
+      twimlSay(answer, voiceName),
+      twimlGather(turnUrl, twimlSay("Waarmee kan ik nog meer helpen?", voiceName), voiceName),
+      twimlRedirect(turnUrl),
+    ]);
+  } catch (error) {
+    console.error("Twilio /turn fout:", error);
+    return buildTwimlResponse([
+      twimlSay("Er ging iets mis tijdens het gesprek."),
+      twimlHangup(),
+    ]);
+  }
+}
+
+async function handleTwilioStatus(req: Request) {
+  const auth = await authenticateTwilioWebhook(req);
+  if (auth.error) return auth.error;
+
+  try {
+    const dbClient = getServiceDbClient();
+    const body = auth.body || {};
+    const callSid = safeText(body.CallSid);
+    const callStatus = safeText(body.CallStatus, "unknown");
+    const duration = Number.parseInt(String(body.CallDuration || "0"), 10) || 0;
+
+    if (!callSid) {
+      return json({ ok: true, ignored: true });
     }
 
-    if (method === "GET" && path === "/assistant/state") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleAssistantState(auth.user, auth.token);
+    const endedAt = nowIso();
+    const terminalStatuses = ["completed", "canceled", "failed", "busy", "no-answer"];
+
+    const { data: callSession, error: sessionError } = await dbClient
+      .from("call_sessions")
+      .select("*")
+      .eq("call_sid", callSid)
+      .maybeSingle();
+    if (sessionError) throw sessionError;
+
+    if (callSession) {
+      await dbClient
+        .from("call_sessions")
+        .update({
+          status: callStatus,
+          duration_seconds: duration,
+          ended_at: terminalStatuses.includes(callStatus) ? endedAt : null,
+          updated_at: endedAt,
+        })
+        .eq("id", callSession.id);
+
+      if (duration > 0 && terminalStatuses.includes(callStatus) && Number(callSession.duration_seconds || 0) !== duration) {
+        const billedMinutes = Math.ceil(duration / 60);
+        await upsertUsage(dbClient, {
+          assistant_id: callSession.assistant_id,
+          user_id: callSession.user_id,
+          usage_type: "call_minutes",
+          quantity: billedMinutes,
+          unit: "minute",
+          amount_eur: billedMinutes * 0.2,
+          metadata: {
+            callSid,
+            durationSeconds: duration,
+          },
+          occurred_at: endedAt,
+        });
+      }
     }
 
-    if (method === "GET" && path === "/integrations/list") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleIntegrationList(auth.user, auth.token);
-    }
+    return json({ ok: true });
+  } catch (error) {
+    console.error("Twilio /status fout:", error);
+    return errorJson((error as any)?.message || "Status update mislukt.", 500);
+  }
+}
 
-    if (method === "POST" && path === "/onboarding/save") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleOnboardingSave(req, auth.user, auth.token, null);
-    }
+Deno.serve(async (req) => {
+  try {
+    const response = await (async () => {
+      if (req.method === "OPTIONS") {
+        return new Response("ok", { status: 204 });
+      }
 
-    if (method === "POST" && path === "/onboarding/step-save") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleOnboardingStepSave(req, auth.user, auth.token);
-    }
+      const method = req.method.toUpperCase();
+      const path = getRoutePath(req);
 
-    if (method === "GET" && path === "/onboarding/progress") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleOnboardingProgress(auth.user, auth.token);
-    }
+      if (method === "GET" && path === "/health") {
+        return json({
+          ok: true,
+          now: nowIso(),
+        });
+      }
 
-    if (method === "POST" && path === "/onboarding/ai-suggest") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleOnboardingAiSuggest(req, auth.user, auth.token);
-    }
+      if (method === "GET" && path === "/voices/options") {
+        return json(VOICE_OPTIONS);
+      }
 
-    if (method === "POST" && path === "/assistant/config") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      const body = await parseBody(req) as Record<string, unknown>;
-      const legacyPayload = {
-        ...body,
-        companyName: body?.companyName,
-        voiceKey: body?.voiceKey || body?.voice || VOICE_OPTIONS[0].key,
-        numberE164: body?.numberE164 || body?.phoneNumber,
-      };
-      return await handleOnboardingSave(req, auth.user, auth.token, legacyPayload);
-    }
+      if (method === "GET" && path === "/avatars/options") {
+        return json(AVATAR_OPTIONS);
+      }
 
-    if (method === "POST" && path === "/webcall/turn") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleWebCallTurn(req, auth.user, auth.token);
-    }
+      if (method === "GET" && path === "/pricing/plans") {
+        const plans = Object.values(PLAN_CATALOG).map((plan) => ({
+          ...plan,
+          metrics: estimatePlanMetrics(plan),
+        }));
+        return json({ plans, assumptions: COST_ASSUMPTIONS });
+      }
 
-    if (method === "POST" && path === "/invoice/request") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleInvoiceRequest(req, auth.user, auth.token);
-    }
+      if (method === "GET" && path === "/numbers/options") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        const owned = await fetchTwilioOwnedNumbers();
+        return json(owned.length > 0 ? owned : DEFAULT_NUMBERS);
+      }
 
-    if (method === "POST" && path === "/activation/start-trial") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleActivationStartTrial(req, auth.user, auth.token);
-    }
+      if (method === "GET" && path === "/assistant/state") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleAssistantState(auth.user, auth.token);
+      }
 
-    if (method === "POST" && path === "/integrations/connect") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleIntegrationConnect(req, auth.user, auth.token);
-    }
+      if (method === "GET" && path === "/integrations/list") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleIntegrationList(auth.user, auth.token);
+      }
 
-    if (method === "POST" && path === "/integrations/disconnect") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleIntegrationDisconnect(req, auth.user, auth.token);
-    }
+      if (method === "POST" && path === "/onboarding/save") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleOnboardingSave(req, auth.user, auth.token, null);
+      }
 
-    if (method === "POST" && path === "/integrations/order-status") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleIntegrationOrderStatus(req, auth.user, auth.token);
-    }
+      if (method === "POST" && path === "/onboarding/step-save") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleOnboardingStepSave(req, auth.user, auth.token);
+      }
 
-    if (method === "GET" && path === "/admin/overview") {
-      return await handleAdminOverview(req);
-    }
+      if (method === "GET" && path === "/onboarding/progress") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleOnboardingProgress(auth.user, auth.token);
+      }
 
-    if (method === "POST" && path === "/admin/approve-payment") {
-      return await handleAdminApprove(req);
-    }
+      if (method === "POST" && path === "/onboarding/ai-suggest") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleOnboardingAiSuggest(req, auth.user, auth.token);
+      }
 
-    if (method === "POST" && path === "/admin/integrations/complete") {
-      return await handleAdminIntegrationComplete(req);
-    }
+      if (method === "POST" && path === "/assistant/config") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        const body = await parseBody(req) as Record<string, unknown>;
+        const legacyPayload = {
+          ...body,
+          companyName: body?.companyName,
+          voiceKey: body?.voiceKey || body?.voice || VOICE_OPTIONS[0].key,
+          numberE164: body?.numberE164 || body?.phoneNumber,
+        };
+        return await handleOnboardingSave(req, auth.user, auth.token, legacyPayload);
+      }
 
-    if (method === "POST" && (path === "/admin/provision-run" || path === "/admin/provision/run")) {
-      return await handleAdminProvisionRun(req);
-    }
+      if (method === "POST" && path === "/webcall/turn") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleWebCallTurn(req, auth.user, auth.token);
+      }
 
-    if (method === "POST" && path === "/provision/run") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleProvisionRun(auth.user, auth.token);
-    }
+      if (method === "POST" && path === "/invoice/request") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleInvoiceRequest(req, auth.user, auth.token);
+      }
 
-    if ((method === "GET" || method === "POST") && path === "/usage/summary") {
-      const auth = await requireUser(req);
-      if (auth.error) return auth.error;
-      return await handleUsageSummary(auth.user, auth.token);
-    }
+      if (method === "POST" && path === "/activation/start-trial") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleActivationStartTrial(req, auth.user, auth.token);
+      }
 
-    return errorJson(`Route niet gevonden: ${method} ${path}`, 404);
+      if (method === "POST" && path === "/integrations/connect") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleIntegrationConnect(req, auth.user, auth.token);
+      }
+
+      if (method === "POST" && path === "/integrations/disconnect") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleIntegrationDisconnect(req, auth.user, auth.token);
+      }
+
+      if (method === "POST" && path === "/integrations/order-status") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleIntegrationOrderStatus(req, auth.user, auth.token);
+      }
+
+      if (method === "POST" && path === "/twilio/voice") {
+        return await handleTwilioVoice(req);
+      }
+
+      if (method === "POST" && path === "/twilio/turn") {
+        return await handleTwilioTurn(req);
+      }
+
+      if (method === "POST" && path === "/twilio/status") {
+        return await handleTwilioStatus(req);
+      }
+
+      if (method === "GET" && path === "/admin/overview") {
+        return await handleAdminOverview(req);
+      }
+
+      if (method === "POST" && path === "/admin/approve-payment") {
+        return await handleAdminApprove(req);
+      }
+
+      if (method === "POST" && path === "/admin/integrations/complete") {
+        return await handleAdminIntegrationComplete(req);
+      }
+
+      if (method === "POST" && (path === "/admin/provision-run" || path === "/admin/provision/run")) {
+        return await handleAdminProvisionRun(req);
+      }
+
+      if (method === "POST" && path === "/provision/run") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleProvisionRun(req, auth.user, auth.token);
+      }
+
+      if ((method === "GET" || method === "POST") && path === "/usage/summary") {
+        const auth = await requireUser(req);
+        if (auth.error) return auth.error;
+        return await handleUsageSummary(auth.user, auth.token);
+      }
+
+      return errorJson(`Route niet gevonden: ${method} ${path}`, 404);
+    })();
+
+    return withResponseHeaders(req, response);
   } catch (error: any) {
-    return errorJson(error?.message || "Onbekende fout in call-api edge function.", 500);
+    return withResponseHeaders(
+      req,
+      errorJson(error?.message || "Onbekende fout in call-api edge function.", 500),
+    );
   }
 });

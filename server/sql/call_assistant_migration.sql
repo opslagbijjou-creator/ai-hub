@@ -167,7 +167,7 @@ create table if not exists public.commerce_integrations (
   last_sync_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint commerce_integrations_provider_check check (provider in ('shopify', 'prestashop', 'woocommerce')),
+  constraint commerce_integrations_provider_check check (provider in ('shopify', 'prestashop', 'woocommerce', 'magento', 'bigcommerce', 'stripe')),
   constraint commerce_integrations_status_check check (status in ('connected', 'pending_setup', 'disconnected', 'error')),
   unique (assistant_id, provider)
 );
@@ -182,6 +182,13 @@ alter table public.commerce_integrations
   alter column status set default 'pending_setup';
 
 alter table public.commerce_integrations
+  drop constraint if exists commerce_integrations_provider_check;
+
+alter table public.commerce_integrations
+  add constraint commerce_integrations_provider_check
+  check (provider in ('shopify', 'prestashop', 'woocommerce', 'magento', 'bigcommerce', 'stripe'));
+
+alter table public.commerce_integrations
   drop constraint if exists commerce_integrations_status_check;
 
 alter table public.commerce_integrations
@@ -190,6 +197,29 @@ alter table public.commerce_integrations
 
 create index if not exists commerce_integrations_assistant_idx
   on public.commerce_integrations (assistant_id, status, updated_at desc);
+
+update public.commerce_integrations
+set
+  access_token = null,
+  api_key = null,
+  api_secret = null,
+  webhook_secret = null,
+  status = 'pending_setup',
+  last_sync_at = null,
+  metadata = jsonb_strip_nulls(
+    coalesce(metadata, '{}'::jsonb) ||
+    jsonb_build_object(
+      'setupMode', 'concierge',
+      'managedBy', coalesce(nullif(metadata->>'managedBy', ''), 'admin_after_request'),
+      'securityReset', true
+    )
+  ),
+  updated_at = now()
+where access_token is not null
+   or api_key is not null
+   or api_secret is not null
+   or webhook_secret is not null
+   or coalesce(metadata->>'setupMode', '') = 'self_service';
 
 create table if not exists public.web_test_sessions (
   id uuid primary key default gen_random_uuid(),
@@ -224,6 +254,10 @@ create table if not exists public.web_test_turns (
 
 create index if not exists web_test_turns_session_idx
   on public.web_test_turns (session_id, turn_index asc);
+
+update public.web_test_turns
+set audio_data_url = null
+where audio_data_url is not null;
 
 create table if not exists public.call_sessions (
   id uuid primary key default gen_random_uuid(),
@@ -352,6 +386,18 @@ create table if not exists public.subscription_state (
 create index if not exists subscription_state_user_idx
   on public.subscription_state (user_id, updated_at desc);
 
+create table if not exists public.admin_users (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  role text not null default 'admin',
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint admin_users_role_check check (role in ('owner', 'admin', 'support'))
+);
+
+create index if not exists admin_users_active_idx
+  on public.admin_users (active, updated_at desc);
+
 alter table public.assistants enable row level security;
 alter table public.assistant_profiles enable row level security;
 alter table public.assistant_voices enable row level security;
@@ -368,6 +414,7 @@ alter table public.usage_ledger enable row level security;
 alter table public.billing_accounts enable row level security;
 alter table public.invoices enable row level security;
 alter table public.subscription_state enable row level security;
+alter table public.admin_users enable row level security;
 
 drop policy if exists "assistants_select_own" on public.assistants;
 drop policy if exists "assistants_insert_own" on public.assistants;
@@ -480,3 +527,8 @@ drop policy if exists "subscription_state_update_own" on public.subscription_sta
 create policy "subscription_state_select_own" on public.subscription_state for select using (auth.uid() = user_id);
 create policy "subscription_state_insert_own" on public.subscription_state for insert with check (auth.uid() = user_id);
 create policy "subscription_state_update_own" on public.subscription_state for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "admin_users_select_self" on public.admin_users;
+create policy "admin_users_select_self" on public.admin_users
+  for select
+  using (auth.uid() = user_id and active = true);

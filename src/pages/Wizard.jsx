@@ -109,7 +109,7 @@ const hasAtLeastOneFaq = (faqItems) => faqItems.some((item) => item.question.tri
 
 const Wizard = () => {
   const navigate = useNavigate();
-  const { setAssistantConfig, apiConfigured, apiConfigMessage } = useAppContext();
+  const { setAssistantConfig, setIsAdmin, apiConfigured, apiConfigMessage } = useAppContext();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [wizardStage, setWizardStage] = useState('form');
@@ -179,6 +179,7 @@ const Wizard = () => {
       throw new Error(payload?.error || 'Kon assistant status niet laden.');
     }
 
+    setIsAdmin(Boolean(payload?.viewer?.isAdmin));
     setAssistantState(payload);
 
     setAssistantConfig({
@@ -192,7 +193,7 @@ const Wizard = () => {
     });
 
     return payload;
-  }, [authFetch, form.companyName, form.numberE164, form.voiceKey, setAssistantConfig]);
+  }, [authFetch, form.companyName, form.numberE164, form.voiceKey, setAssistantConfig, setIsAdmin]);
 
   const loadInitialData = useCallback(async () => {
     setLoading(true);
@@ -398,7 +399,8 @@ const Wizard = () => {
           companyName: form.companyName,
           assistantName: form.assistantName,
           businessType: assistantState?.profile?.business_type || '',
-          primaryGoal: form.primaryGoal
+          primaryGoal: form.primaryGoal,
+          websiteUrl: form.websiteUrl
         })
       });
 

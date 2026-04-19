@@ -33,8 +33,6 @@ const PROVIDER_LABELS = {
   stripe: 'Stripe Billing'
 };
 
-const SELF_SERVICE_PROVIDERS = new Set(['shopify', 'prestashop', 'woocommerce']);
-
 const createEmptyIntegrationForm = () => ({
   assistantId: '',
   integrationId: '',
@@ -42,10 +40,7 @@ const createEmptyIntegrationForm = () => ({
   storeUrl: '',
   contactEmail: '',
   setupNotes: '',
-  adminNotes: '',
-  accessToken: '',
-  apiKey: '',
-  apiSecret: ''
+  adminNotes: ''
 });
 
 const AdminConsole = () => {
@@ -177,10 +172,7 @@ const AdminConsole = () => {
       storeUrl: integration.storeUrl || '',
       contactEmail: integration.contactEmail || assistant.contactEmail || '',
       setupNotes: integration.setupNotes || '',
-      adminNotes: '',
-      accessToken: '',
-      apiKey: '',
-      apiSecret: ''
+      adminNotes: ''
     });
   };
 
@@ -251,7 +243,7 @@ const AdminConsole = () => {
 
       <div className="admin-toolbar-row">
         <div className="glass-panel admin-toolbar-note">
-          <ShieldCheck size={16} /> Alleen jouw admin UID mag deze acties uitvoeren.
+          <ShieldCheck size={16} /> Adminacties worden server-side gevalideerd via de `admin_users` rolbron.
         </div>
         <button className="btn-secondary" onClick={loadOverview} disabled={loading || Boolean(actioningId)}>
           <RefreshCcw size={15} /> Vernieuw overzicht
@@ -367,7 +359,7 @@ const AdminConsole = () => {
 
                             <div className="admin-chip-row">
                               <span className={`admin-chip state-${integration.status}`}>{integration.status}</span>
-                              <span className="admin-chip neutral">{integration.setupMode || 'self_service'}</span>
+                              <span className="admin-chip neutral">{integration.setupMode || 'concierge'}</span>
                             </div>
                           </div>
 
@@ -403,62 +395,9 @@ const AdminConsole = () => {
                                 />
                               </label>
 
-                              {integrationForm.provider === 'shopify' && (
-                                <label>
-                                  Shopify Access Token
-                                  <input
-                                    type="password"
-                                    className="glass-input"
-                                    value={integrationForm.accessToken}
-                                    onChange={(event) =>
-                                      setIntegrationForm((prev) => ({ ...prev, accessToken: event.target.value }))}
-                                  />
-                                </label>
-                              )}
-
-                              {integrationForm.provider === 'prestashop' && (
-                                <label>
-                                  PrestaShop API Key
-                                  <input
-                                    type="password"
-                                    className="glass-input"
-                                    value={integrationForm.apiKey}
-                                    onChange={(event) =>
-                                      setIntegrationForm((prev) => ({ ...prev, apiKey: event.target.value }))}
-                                  />
-                                </label>
-                              )}
-
-                              {integrationForm.provider === 'woocommerce' && (
-                                <>
-                                  <label>
-                                    WooCommerce Consumer Key
-                                    <input
-                                      type="password"
-                                      className="glass-input"
-                                      value={integrationForm.apiKey}
-                                      onChange={(event) =>
-                                        setIntegrationForm((prev) => ({ ...prev, apiKey: event.target.value }))}
-                                    />
-                                  </label>
-                                  <label>
-                                    WooCommerce Consumer Secret
-                                    <input
-                                      type="password"
-                                      className="glass-input"
-                                      value={integrationForm.apiSecret}
-                                      onChange={(event) =>
-                                        setIntegrationForm((prev) => ({ ...prev, apiSecret: event.target.value }))}
-                                    />
-                                  </label>
-                                </>
-                              )}
-
-                              {!SELF_SERVICE_PROVIDERS.has(integrationForm.provider) && (
-                                <p className="text-muted" style={{ fontSize: '0.82rem' }}>
-                                  Dit platform gebruikt momenteel concierge setup. Alleen store URL en notities zijn nodig.
-                                </p>
-                              )}
+                              <p className="text-muted" style={{ fontSize: '0.82rem' }}>
+                                Deze adminflow bewaart geen plaintext credentials meer. Rond de koppeling metadata-only af en beheer eventuele secrets buiten de app-database.
+                              </p>
 
                               <label>
                                 Admin notitie

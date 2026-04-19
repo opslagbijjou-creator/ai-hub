@@ -3,8 +3,10 @@ import { Phone, ReceiptText, RefreshCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { apiConfigMessage, apiUrl, hasApiBaseConfig } from '../lib/api';
 import WebCallPanel from '../components/WebCallPanel';
+import { useAppContext } from '../context/AppContext';
 
 const CallStudio = () => {
+  const { setIsAdmin } = useAppContext();
   const [assistantState, setAssistantState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
@@ -32,8 +34,10 @@ const CallStudio = () => {
 
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || 'Kon assistant state niet laden.');
+      setIsAdmin(Boolean(payload?.viewer?.isAdmin));
       setAssistantState(payload);
     } catch (loadError) {
+      setIsAdmin(false);
       setError(loadError?.message || 'Kon gegevens niet laden.');
     } finally {
       setLoading(false);

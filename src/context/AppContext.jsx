@@ -3,19 +3,13 @@ import { hasSupabaseConfig, supabase, supabaseConfigMessage } from '../lib/supab
 import { hasApiBaseConfig, apiConfigMessage } from '../lib/api';
 
 const AppContext = createContext();
-const DEFAULT_ADMIN_UIDS = ['77b79572-27b4-4f2d-ad4d-0cc8a27ea8d3'];
-const CONFIGURED_ADMIN_UIDS = (import.meta.env.VITE_ADMIN_UIDS || '')
-  .split(',')
-  .map((entry) => entry.trim())
-  .filter(Boolean);
-const ADMIN_UIDS = Array.from(new Set([...DEFAULT_ADMIN_UIDS, ...CONFIGURED_ADMIN_UIDS]));
 
 export const AppProvider = ({ children }) => {
   const [assistantConfig, setAssistantConfig] = useState(null);
   const [theme, setTheme] = useState('light-mode');
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(() => hasSupabaseConfig);
-  const isAdmin = Boolean(user?.id && ADMIN_UIDS.includes(user.id));
+  const [isAdmin, setIsAdmin] = useState(false);
   
   const [knowledgeBase, setKnowledgeBase] = useState({
     urls: [],
@@ -78,9 +72,15 @@ export const AppProvider = ({ children }) => {
         }
 
         const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) setUser(session?.user ?? null);
+        if (mounted) {
+          setUser(session?.user ?? null);
+          if (!session?.user) setIsAdmin(false);
+        }
       } catch {
-        if (mounted) setUser(null);
+        if (mounted) {
+          setUser(null);
+          setIsAdmin(false);
+        }
       } finally {
         if (mounted) setAuthLoading(false);
       }
@@ -91,6 +91,7 @@ export const AppProvider = ({ children }) => {
     // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      if (!session?.user) setIsAdmin(false);
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         clearOAuthUrlArtifacts();
       }
@@ -116,6 +117,7 @@ export const AppProvider = ({ children }) => {
       await supabase.auth.signOut();
     }
     setUser(null);
+    setIsAdmin(false);
     setAssistantConfig(null);
   };
 
@@ -125,7 +127,7 @@ export const AppProvider = ({ children }) => {
       theme, toggleTheme,
       knowledgeBase, setKnowledgeBase,
       user, authLoading, signOut,
-      isAdmin,
+      isAdmin, setIsAdmin,
       supabaseConfigured: hasSupabaseConfig,
       supabaseConfigMessage,
       apiConfigured: hasApiBaseConfig,
