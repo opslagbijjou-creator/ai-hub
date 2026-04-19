@@ -17,11 +17,11 @@ const PricingPage = () => {
       <PublicHeader active="pricing" />
 
       <main className="belliq-main pb-24">
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-20 text-center">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-16 sm:mb-20 text-center">
           <span className="inline-block px-4 py-1.5 rounded-full bg-secondary-container text-on-secondary-container text-xs font-bold uppercase tracking-widest mb-6">
             Prijzen die meeschalen
           </span>
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter text-on-surface mb-6 font-headline">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tighter text-on-surface mb-6 font-headline">
             Kies je niveau van <span className="text-primary">Intelligentie.</span>
           </h1>
           <p className="text-lg text-on-surface-variant max-w-2xl mx-auto font-medium leading-relaxed">
@@ -30,8 +30,8 @@ const PricingPage = () => {
           </p>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-8 mb-32">
-          <div className="group p-8 rounded-lg bg-surface-container-lowest border border-outline-variant/15 flex flex-col hover:scale-[1.02] transition-all duration-300">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 mb-20 sm:mb-32">
+          <div className="group p-6 sm:p-8 rounded-lg bg-surface-container-lowest border border-outline-variant/15 flex flex-col hover:scale-[1.02] transition-all duration-300">
             <div className="mb-8">
               <h3 className="text-xl font-bold mb-2 font-headline">Starter</h3>
               <p className="text-on-surface-variant text-sm">
@@ -72,7 +72,7 @@ const PricingPage = () => {
             </button>
           </div>
 
-          <div className="group p-8 rounded-lg bg-white relative flex flex-col scale-105 shadow-2xl shadow-indigo-500/10 border-2 border-primary/20 hover:scale-[1.07] transition-all duration-300 z-10">
+          <div className="group p-6 sm:p-8 rounded-lg bg-white relative flex flex-col md:scale-105 shadow-2xl shadow-indigo-500/10 border-2 border-primary/20 hover:md:scale-[1.07] transition-all duration-300 z-10">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-on-primary px-4 py-1 rounded-full text-xs font-bold tracking-wider">
               AANBEVOLEN
             </div>
@@ -122,7 +122,7 @@ const PricingPage = () => {
             </button>
           </div>
 
-          <div className="group p-8 rounded-lg bg-surface-container-lowest border border-outline-variant/15 flex flex-col hover:scale-[1.02] transition-all duration-300">
+          <div className="group p-6 sm:p-8 rounded-lg bg-surface-container-lowest border border-outline-variant/15 flex flex-col hover:scale-[1.02] transition-all duration-300">
             <div className="mb-8">
               <h3 className="text-xl font-bold mb-2 font-headline">Enterprise</h3>
               <p className="text-on-surface-variant text-sm">
@@ -163,7 +163,7 @@ const PricingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-5xl mx-auto px-4 sm:px-6 mb-32">
+        <section className="max-w-5xl mx-auto px-4 sm:px-6 mb-20 sm:mb-32">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight mb-4 font-headline">Vergelijk functies</h2>
             <p className="text-on-surface-variant">Een diepere duik in wat elk plan te bieden heeft.</p>
@@ -210,7 +210,7 @@ const PricingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-4xl mx-auto px-4 sm:px-6 mb-24">
+        <section className="max-w-4xl mx-auto px-4 sm:px-6 mb-16 sm:mb-24">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight mb-4 font-headline">Veelgestelde vragen</h2>
             <p className="text-on-surface-variant">Alles wat je moet weten over onze diensten en betalingen.</p>
@@ -239,7 +239,7 @@ const PricingPage = () => {
         </section>
 
         <section className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="relative overflow-hidden rounded-xl bg-primary-fixed p-12 md:p-20 flex flex-col items-center text-center">
+          <div className="relative overflow-hidden rounded-xl bg-primary-fixed p-8 sm:p-12 md:p-20 flex flex-col items-center text-center">
             <div className="absolute inset-0 opacity-10 pointer-events-none">
               <div className="absolute top-0 right-0 w-96 h-96 bg-primary rounded-full blur-[120px]"></div>
               <div className="absolute bottom-0 left-0 w-96 h-96 bg-secondary-container rounded-full blur-[120px]"></div>

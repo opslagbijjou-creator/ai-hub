@@ -12,13 +12,13 @@ const InfoPage = () => {
       <PublicHeader active="how" />
 
       <main className="belliq-main">
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-24">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-20 sm:mb-24">
           <div className="flex flex-col md:flex-row items-center gap-16">
             <div className="md:w-1/2">
               <span className="bg-secondary-container text-on-secondary-container px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest mb-6 inline-block">
                 Proces
               </span>
-              <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter text-on-surface leading-tight mb-8 font-headline">
+              <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tighter text-on-surface leading-tight mb-8 font-headline">
                 Van data naar <span className="text-primary">intelligente</span> dialoog.
               </h1>
               <p className="text-lg text-on-surface-variant leading-relaxed mb-10 max-w-xl">
@@ -28,13 +28,13 @@ const InfoPage = () => {
               <div className="flex gap-4 flex-wrap">
                 <button
                   onClick={() => navigate('/login')}
-                  className="bg-primary text-white px-8 py-4 rounded-lg font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-primary/20"
+                  className="bg-primary text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-primary/20"
                 >
                   Start nu
                 </button>
                 <button
                   onClick={() => navigate('/pricing')}
-                  className="bg-surface-container-high text-on-surface px-8 py-4 rounded-lg font-bold hover:scale-[1.02] active:scale-95 transition-all"
+                  className="bg-surface-container-high text-on-surface px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg font-bold hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   Bekijk demo
                 </button>
@@ -55,9 +55,9 @@ const InfoPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-32">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-20 sm:mb-32">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-            <div className="md:col-span-7 bg-surface-container-lowest rounded-lg p-10 shadow-sm relative overflow-hidden group">
+            <div className="md:col-span-7 bg-surface-container-lowest rounded-lg p-6 sm:p-10 shadow-sm relative overflow-hidden group">
               <div className="relative z-10">
                 <div className="w-14 h-14 bg-primary-fixed text-primary rounded-xl flex items-center justify-center mb-8">
                   <span className="material-symbols-outlined text-3xl">cloud_upload</span>
@@ -84,7 +84,7 @@ const InfoPage = () => {
               </div>
             </div>
 
-            <div className="md:col-span-5 bg-primary text-white rounded-lg p-10 shadow-xl shadow-primary/10 relative overflow-hidden">
+            <div className="md:col-span-5 bg-primary text-white rounded-lg p-6 sm:p-10 shadow-xl shadow-primary/10 relative overflow-hidden">
               <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mb-8">
                 <span className="material-symbols-outlined text-3xl">terminal</span>
               </div>
@@ -103,7 +103,7 @@ const InfoPage = () => {
               </div>
             </div>
 
-            <div className="md:col-span-5 bg-surface-container-low rounded-lg p-10 relative overflow-hidden">
+            <div className="md:col-span-5 bg-surface-container-low rounded-lg p-6 sm:p-10 relative overflow-hidden">
               <div className="w-14 h-14 bg-on-surface text-surface rounded-xl flex items-center justify-center mb-8">
                 <span className="material-symbols-outlined text-3xl">bolt</span>
               </div>
@@ -128,7 +128,7 @@ const InfoPage = () => {
               </div>
             </div>
 
-            <div className="md:col-span-7 bg-surface-container-highest rounded-lg p-10 relative overflow-hidden group">
+            <div className="md:col-span-7 bg-surface-container-highest rounded-lg p-6 sm:p-10 relative overflow-hidden group">
               <div className="flex flex-col md:flex-row gap-8 items-start">
                 <div className="flex-1">
                   <div className="w-14 h-14 bg-tertiary-fixed text-tertiary rounded-xl flex items-center justify-center mb-8">
@@ -156,7 +156,7 @@ const InfoPage = () => {
           </div>
         </section>
 
-        <section className="bg-surface-container-low py-32 overflow-hidden">
+        <section className="bg-surface-container-low py-20 sm:py-32 overflow-hidden">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="text-center mb-20">
               <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-4 font-headline">De Belliq Architectuur</h2>
@@ -202,8 +202,8 @@ const InfoPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-32 text-center">
-          <div className="bg-on-primary-fixed-variant rounded-lg p-16 relative overflow-hidden">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-20 sm:py-32 text-center">
+          <div className="bg-on-primary-fixed-variant rounded-lg p-8 sm:p-16 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-12 opacity-10">
               <span className="material-symbols-outlined text-[300px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                 rocket_launch
@@ -217,13 +217,13 @@ const InfoPage = () => {
             <div className="flex flex-col md:flex-row justify-center gap-6 relative z-10">
               <button
                 onClick={() => navigate('/login')}
-                className="bg-primary-fixed text-on-primary-fixed px-10 py-5 rounded-lg font-black text-lg hover:scale-105 transition-transform"
+                className="bg-primary-fixed text-on-primary-fixed px-7 sm:px-10 py-4 sm:py-5 rounded-lg font-black text-lg hover:scale-105 transition-transform"
               >
                 Start gratis trial
               </button>
               <button
                 onClick={() => navigate('/contact')}
-                className="bg-transparent border-2 border-white/20 text-white px-10 py-5 rounded-lg font-black text-lg hover:bg-white/10 transition-colors"
+                className="bg-transparent border-2 border-white/20 text-white px-7 sm:px-10 py-4 sm:py-5 rounded-lg font-black text-lg hover:bg-white/10 transition-colors"
               >
                 Plan een demo
               </button>
