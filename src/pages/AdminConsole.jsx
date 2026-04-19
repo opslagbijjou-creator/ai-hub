@@ -27,8 +27,13 @@ const SummaryCard = ({ icon, label, value, tone = 'default' }) => (
 const PROVIDER_LABELS = {
   shopify: 'Shopify',
   prestashop: 'PrestaShop',
-  woocommerce: 'WooCommerce'
+  woocommerce: 'WooCommerce',
+  magento: 'Magento 2',
+  bigcommerce: 'BigCommerce',
+  stripe: 'Stripe Billing'
 };
+
+const SELF_SERVICE_PROVIDERS = new Set(['shopify', 'prestashop', 'woocommerce']);
 
 const createEmptyIntegrationForm = () => ({
   assistantId: '',
@@ -222,7 +227,7 @@ const AdminConsole = () => {
     const breakdown = summary?.providerBreakdown || {};
     const entries = Object.entries(breakdown);
     if (!entries.length) return 'Nog geen actieve shopkoppelingen';
-    return entries.map(([provider, count]) => `${provider}: ${count}`).join(' • ');
+    return entries.map(([provider, count]) => `${PROVIDER_LABELS[provider] || provider}: ${count}`).join(' • ');
   }, [summary]);
 
   if (!isAdmin) {
@@ -333,7 +338,11 @@ const AdminConsole = () => {
                   </div>
                   <div>
                     <span>Shops</span>
-                    <strong>{assistant.connectedProviders?.length ? assistant.connectedProviders.join(', ') : 'Geen'}</strong>
+                    <strong>
+                      {assistant.connectedProviders?.length
+                        ? assistant.connectedProviders.map((provider) => PROVIDER_LABELS[provider] || provider).join(', ')
+                        : 'Geen'}
+                    </strong>
                   </div>
                   <div>
                     <span>Gebruik deze maand</span>
@@ -443,6 +452,12 @@ const AdminConsole = () => {
                                     />
                                   </label>
                                 </>
+                              )}
+
+                              {!SELF_SERVICE_PROVIDERS.has(integrationForm.provider) && (
+                                <p className="text-muted" style={{ fontSize: '0.82rem' }}>
+                                  Dit platform gebruikt momenteel concierge setup. Alleen store URL en notities zijn nodig.
+                                </p>
                               )}
 
                               <label>

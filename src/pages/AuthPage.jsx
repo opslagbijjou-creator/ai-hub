@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppContext } from '../context/AppContext';
-import { Bot, Mail, Lock, ChevronRight, ArrowLeft, User, Sparkles } from 'lucide-react';
+import { Mail, Lock, ChevronRight, ArrowLeft, User, Sparkles } from 'lucide-react';
 import './LandingPage.css';
 
 const normalizeAuthError = (message) => {
@@ -239,9 +239,8 @@ const AuthPage = () => {
       <div style={{ width: '100%', maxWidth: '420px', padding: '0 1rem', zIndex: 10 }}>
         
         <div key={isLogin ? 'login-header' : 'register-header'} className={`auth-card ${animating ? 'exit' : ''}`} style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <Bot className="text-gradient" size={36} />
-            <span className="text-gradient font-heading" style={{ fontSize: '1.75rem', fontWeight: 700 }}>AI Hub</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
+            <span className="font-heading" style={{ fontSize: '1.75rem', fontWeight: 700, color: '#4338ca' }}>Belliq</span>
           </div>
           
           {isLogin ? (
