@@ -4026,7 +4026,7 @@ Deno.serve(async (req: Request) => {
   try {
     const response = await (async () => {
       if (req.method === "OPTIONS") {
-        return new Response("ok", { status: 204 });
+        return new Response(null, { status: 204 });
       }
 
       const method = req.method.toUpperCase();
