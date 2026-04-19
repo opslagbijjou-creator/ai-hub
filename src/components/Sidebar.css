@@ -16,8 +16,14 @@
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  justify-content: space-between;
   padding: 0.2rem 0.35rem;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
 }
 
 .sidebar-logo-icon {
@@ -158,17 +164,62 @@
   color: #93000a;
 }
 
+.sidebar-mobile-close,
+.sidebar-mobile-backdrop {
+  display: none;
+}
+
 @media (max-width: 1024px) {
+  .sidebar-mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    border: none;
+    background: rgba(15, 23, 42, 0.38);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .sidebar-mobile-backdrop.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .sidebar {
-    position: static;
-    width: 100%;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid rgba(199, 196, 216, 0.55);
+    width: min(20rem, 88vw);
+    max-width: calc(100vw - 1.5rem);
+    height: 100dvh;
+    transform: translateX(-108%);
+    transition: transform 0.24s ease;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25);
+    pointer-events: none;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .sidebar-mobile-close {
+    display: inline-flex;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 999px;
+    align-items: center;
+    justify-content: center;
+    color: #65627a;
+    background: #e6e8ea;
+  }
+
+  .sidebar-mobile-close:hover {
+    color: #3525cd;
+    background: #dde0e4;
   }
 
   .sidebar-nav {
-    overflow-x: auto;
+    overflow-y: auto;
   }
 }
-

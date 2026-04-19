@@ -2,6 +2,7 @@
   width: 100%;
   min-height: 100vh;
   background: #f7f9fb;
+  overflow-x: hidden;
 }
 
 .dashboard-workspace {
@@ -1142,8 +1143,13 @@
   .dashboard-content {
     height: auto;
     min-height: 0;
-    padding: 1.2rem 1rem 1.8rem;
+    padding: 5.35rem 1rem 1.8rem;
     overflow: visible;
+  }
+
+  .dashboard-layout.menu-open .dashboard-content {
+    pointer-events: none;
+    user-select: none;
   }
 
   .dashboard-setup-strip-main {
@@ -1175,6 +1181,10 @@
 }
 
 @media (max-width: 768px) {
+  .dashboard-content {
+    padding-top: 5rem;
+  }
+
   .stats-grid,
   .catalog-grid,
   .setup-step-grid,

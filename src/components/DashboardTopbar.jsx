@@ -3,16 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import './DashboardTopbar.css';
 
-const DashboardTopbar = () => {
+const DashboardTopbar = ({ menuOpen = false, onMenuToggle = () => {} }) => {
   const navigate = useNavigate();
   const { user } = useAppContext();
   const avatarLetter = (user?.email || 'A').trim().charAt(0).toUpperCase();
 
   return (
     <header className="dashboard-topbar">
-      <div className="dashboard-topbar-search">
-        <span className="material-symbols-outlined">search</span>
-        <input type="text" placeholder="Search integrations..." aria-label="Zoeken" />
+      <div className="dashboard-topbar-left">
+        <button
+          className="topbar-menu-btn"
+          type="button"
+          aria-label={menuOpen ? 'Sluit menu' : 'Open menu'}
+          aria-expanded={menuOpen}
+          onClick={onMenuToggle}
+        >
+          <span className="material-symbols-outlined">{menuOpen ? 'close' : 'menu'}</span>
+        </button>
+
+        <div className="dashboard-topbar-search">
+          <span className="material-symbols-outlined">search</span>
+          <input type="text" placeholder="Search integrations..." aria-label="Zoeken" />
+        </div>
       </div>
 
       <div className="dashboard-topbar-actions">
@@ -42,4 +54,3 @@ const DashboardTopbar = () => {
 };
 
 export default DashboardTopbar;
-

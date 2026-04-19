@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
   ArrowRight,
@@ -1342,11 +1342,41 @@ const Catalog = () => {
 };
 
 const Dashboard = () => {
+  const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [mobileMenuOpen]);
+
   return (
-    <div className="dashboard-layout">
-      <Sidebar />
+    <div className={`dashboard-layout ${mobileMenuOpen ? 'menu-open' : ''}`}>
+      <Sidebar mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
       <div className="dashboard-workspace">
-        <DashboardTopbar />
+        <DashboardTopbar
+          menuOpen={mobileMenuOpen}
+          onMenuToggle={() => setMobileMenuOpen((prev) => !prev)}
+        />
         <main className="dashboard-content">
           <Routes>
             <Route path="/" element={<Overview />} />
