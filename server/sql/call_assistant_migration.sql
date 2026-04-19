@@ -7,10 +7,13 @@ create table if not exists public.assistants (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references auth.users (id) on delete cascade,
   display_name text,
+  avatar_key text not null default 'avatar_01',
   status text not null default 'draft',
   live_status text not null default 'not_live',
   billing_status text not null default 'none',
   desired_plan text not null default 'plan_150',
+  setup_step integer not null default 1,
+  setup_completed boolean not null default false,
   prompt text,
   language text not null default 'nl-NL',
   currency text not null default 'EUR',
@@ -28,6 +31,23 @@ create table if not exists public.assistants (
   ))
 );
 
+alter table public.assistants add column if not exists avatar_key text;
+alter table public.assistants add column if not exists setup_step integer;
+alter table public.assistants add column if not exists setup_completed boolean;
+
+update public.assistants
+set avatar_key = coalesce(avatar_key, 'avatar_01'),
+    setup_step = coalesce(setup_step, 1),
+    setup_completed = coalesce(setup_completed, false);
+
+alter table public.assistants
+  alter column avatar_key set default 'avatar_01',
+  alter column avatar_key set not null,
+  alter column setup_step set default 1,
+  alter column setup_step set not null,
+  alter column setup_completed set default false,
+  alter column setup_completed set not null;
+
 create table if not exists public.assistant_profiles (
   id bigserial primary key,
   assistant_id uuid not null unique references public.assistants (id) on delete cascade,
@@ -39,11 +59,20 @@ create table if not exists public.assistant_profiles (
   opening_hours text,
   tone_of_voice text,
   goals text,
+  website_url text,
+  secondary_language text,
+  role_description text,
+  handoff_rules text,
   greeting text,
   knowledge text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.assistant_profiles add column if not exists website_url text;
+alter table public.assistant_profiles add column if not exists secondary_language text;
+alter table public.assistant_profiles add column if not exists role_description text;
+alter table public.assistant_profiles add column if not exists handoff_rules text;
 
 create table if not exists public.assistant_voices (
   id bigserial primary key,
@@ -88,6 +117,40 @@ create table if not exists public.assistant_numbers (
 
 create index if not exists assistant_numbers_selected_idx
   on public.assistant_numbers (assistant_id, selected, updated_at desc);
+
+create table if not exists public.assistant_faq_entries (
+  id bigserial primary key,
+  assistant_id uuid not null references public.assistants (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  question text not null,
+  answer text not null,
+  position integer not null default 1,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists assistant_faq_entries_assistant_idx
+  on public.assistant_faq_entries (assistant_id, is_active, position asc);
+
+create table if not exists public.assistant_channel_settings (
+  id bigserial primary key,
+  assistant_id uuid not null unique references public.assistants (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  call_enabled boolean not null default true,
+  sms_enabled boolean not null default false,
+  whatsapp_enabled boolean not null default false,
+  sms_templates jsonb not null default '[]'::jsonb,
+  whatsapp_templates jsonb not null default '[]'::jsonb,
+  availability_mode text not null default 'always',
+  availability_schedule jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint assistant_channel_settings_mode_check check (availability_mode in ('always', 'custom_hours'))
+);
+
+create index if not exists assistant_channel_settings_user_idx
+  on public.assistant_channel_settings (user_id, updated_at desc);
 
 create table if not exists public.commerce_integrations (
   id uuid primary key default gen_random_uuid(),
@@ -293,6 +356,8 @@ alter table public.assistants enable row level security;
 alter table public.assistant_profiles enable row level security;
 alter table public.assistant_voices enable row level security;
 alter table public.assistant_numbers enable row level security;
+alter table public.assistant_faq_entries enable row level security;
+alter table public.assistant_channel_settings enable row level security;
 alter table public.commerce_integrations enable row level security;
 alter table public.web_test_sessions enable row level security;
 alter table public.web_test_turns enable row level security;
@@ -331,6 +396,20 @@ drop policy if exists "assistant_numbers_update_own" on public.assistant_numbers
 create policy "assistant_numbers_select_own" on public.assistant_numbers for select using (auth.uid() = user_id);
 create policy "assistant_numbers_insert_own" on public.assistant_numbers for insert with check (auth.uid() = user_id);
 create policy "assistant_numbers_update_own" on public.assistant_numbers for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "assistant_faq_entries_select_own" on public.assistant_faq_entries;
+drop policy if exists "assistant_faq_entries_insert_own" on public.assistant_faq_entries;
+drop policy if exists "assistant_faq_entries_update_own" on public.assistant_faq_entries;
+create policy "assistant_faq_entries_select_own" on public.assistant_faq_entries for select using (auth.uid() = user_id);
+create policy "assistant_faq_entries_insert_own" on public.assistant_faq_entries for insert with check (auth.uid() = user_id);
+create policy "assistant_faq_entries_update_own" on public.assistant_faq_entries for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "assistant_channel_settings_select_own" on public.assistant_channel_settings;
+drop policy if exists "assistant_channel_settings_insert_own" on public.assistant_channel_settings;
+drop policy if exists "assistant_channel_settings_update_own" on public.assistant_channel_settings;
+create policy "assistant_channel_settings_select_own" on public.assistant_channel_settings for select using (auth.uid() = user_id);
+create policy "assistant_channel_settings_insert_own" on public.assistant_channel_settings for insert with check (auth.uid() = user_id);
+create policy "assistant_channel_settings_update_own" on public.assistant_channel_settings for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "commerce_integrations_select_own" on public.commerce_integrations;
 drop policy if exists "commerce_integrations_insert_own" on public.commerce_integrations;

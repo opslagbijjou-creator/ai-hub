@@ -64,6 +64,17 @@ const VOICE_OPTIONS = [
   },
 ];
 
+const AVATAR_OPTIONS = [
+  { key: "avatar_01", label: "Robin", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Robin" },
+  { key: "avatar_02", label: "Sophie", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Sophie" },
+  { key: "avatar_03", label: "Mila", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Mila" },
+  { key: "avatar_04", label: "Daan", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Daan" },
+  { key: "avatar_05", label: "Noah", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Noah" },
+  { key: "avatar_06", label: "Emma", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Emma" },
+  { key: "avatar_07", label: "Yara", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Yara" },
+  { key: "avatar_08", label: "Liam", imageUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Liam" },
+];
+
 const DEFAULT_NUMBERS = [
   { e164: "+31208081234", label: "Amsterdam, NL", countryCode: "NL", source: "catalog" },
   { e164: "+31103456789", label: "Rotterdam, NL", countryCode: "NL", source: "catalog" },
@@ -164,6 +175,10 @@ function safeText(value: unknown, fallback = "") {
   return text || fallback;
 }
 
+function hasKey(payload: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(payload, key);
+}
+
 function normalizePhoneNumber(value: unknown) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -188,6 +203,81 @@ function normalizeArray(value: unknown) {
   }
 
   return [];
+}
+
+function normalizeBoolean(value: unknown, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "ja", "aan", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "nee", "uit", "off"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function normalizeStep(value: unknown, fallback = 1) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(5, Math.max(1, Math.round(parsed)));
+}
+
+function normalizeAvailabilityMode(value: unknown, fallback = "always") {
+  const mode = safeText(value, fallback).toLowerCase();
+  return mode === "custom_hours" ? "custom_hours" : "always";
+}
+
+function normalizeAvailabilitySchedule(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    const parsed = value.trim();
+    if (!parsed) return {};
+    try {
+      const decoded = JSON.parse(parsed);
+      if (decoded && typeof decoded === "object" && !Array.isArray(decoded)) return decoded;
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function normalizeTemplates(value: unknown) {
+  if (!value) return [];
+  const rows = Array.isArray(value) ? value : [];
+  return rows
+    .map((row, index) => {
+      const item = row && typeof row === "object" ? row as Record<string, unknown> : {};
+      const title = safeText(item?.title || item?.name || `Template ${index + 1}`);
+      const trigger = safeText(item?.trigger || item?.when || item?.condition);
+      const text = safeText(item?.text || item?.message || item?.content);
+      if (!text) return null;
+      return { title, trigger, text };
+    })
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function normalizeFaqItems(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+      const question = safeText(item?.question);
+      const answer = safeText(item?.answer);
+      if (!question || !answer) return null;
+      return {
+        question,
+        answer,
+        position: Number(item?.position || index + 1) || index + 1,
+        isActive: normalizeBoolean(item?.is_active ?? item?.isActive, true),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 50);
 }
 
 function isMissingTableError(error: any) {
@@ -321,21 +411,85 @@ async function requireAdminAccess(req: Request) {
   return { error: errorJson("Geen admintoegang.", 403), user: null, token: "", mode: "none" as const };
 }
 
-function onboardingFromPayload(payload: Record<string, unknown> = {}) {
+function onboardingFromPayload(
+  payload: Record<string, unknown> = {},
+  options: { partial?: boolean } = {},
+) {
+  const partial = Boolean(options.partial);
+  const getText = (keys: string[], fallback = "") => {
+    for (const key of keys) {
+      if (hasKey(payload, key)) return safeText(payload[key]);
+    }
+    return partial ? undefined : fallback;
+  };
+  const getBool = (keys: string[], fallback?: boolean) => {
+    for (const key of keys) {
+      if (hasKey(payload, key)) return normalizeBoolean(payload[key], fallback);
+    }
+    return partial ? undefined : fallback;
+  };
+
+  const servicesValue = hasKey(payload, "services")
+    ? normalizeArray(payload.services)
+    : undefined;
+
+  const faqItems = hasKey(payload, "faqItems")
+    ? normalizeFaqItems(payload.faqItems)
+    : partial
+      ? undefined
+      : [];
+
+  const smsTemplates = hasKey(payload, "smsTemplates")
+    ? normalizeTemplates(payload.smsTemplates)
+    : partial
+      ? undefined
+      : [];
+
+  const whatsappTemplates = hasKey(payload, "whatsappTemplates")
+    ? normalizeTemplates(payload.whatsappTemplates)
+    : partial
+      ? undefined
+      : [];
+
   return {
-    companyName: safeText(payload.companyName, "Mijn Bedrijf"),
-    businessType: safeText(payload.businessType),
-    services: normalizeArray(payload.services),
-    pricing: safeText(payload.pricing),
-    openingHours: safeText(payload.openingHours),
-    toneOfVoice: safeText(payload.toneOfVoice, "professioneel en vriendelijk"),
-    goals: safeText(payload.goals),
-    greeting: safeText(payload.greeting),
-    knowledge: safeText(payload.knowledge),
-    voiceKey: safeText(payload.voiceKey, VOICE_OPTIONS[0].key),
-    numberE164: normalizePhoneNumber(payload.numberE164 || payload.phoneNumber),
-    numberLabel: safeText(payload.numberLabel),
-    planKey: normalizePlanKey(payload.planKey),
+    assistantName: getText(["assistantName", "displayName", "name"], undefined),
+    avatarKey: getText(["avatarKey"], undefined),
+    companyName: getText(["companyName", "businessName"], undefined),
+    businessType: getText(["businessType"], undefined),
+    services: servicesValue,
+    pricing: getText(["pricing"], undefined),
+    openingHours: getText(["openingHours"], undefined),
+    toneOfVoice: getText(["toneOfVoice"], undefined),
+    primaryGoal: getText(["primaryGoal", "goals"], undefined),
+    goals: getText(["goals", "primaryGoal"], undefined),
+    greeting: getText(["greeting"], undefined),
+    knowledge: getText(["knowledge"], undefined),
+    websiteUrl: getText(["websiteUrl", "website"], undefined),
+    secondaryLanguage: getText(["secondaryLanguage"], undefined),
+    roleDescription: getText(["roleDescription"], undefined),
+    handoffRules: getText(["handoffRules"], undefined),
+    voiceKey: getText(["voiceKey"], undefined),
+    numberE164: hasKey(payload, "numberE164") || hasKey(payload, "phoneNumber")
+      ? normalizePhoneNumber(payload.numberE164 || payload.phoneNumber)
+      : undefined,
+    numberLabel: getText(["numberLabel"], undefined),
+    planKey: hasKey(payload, "planKey") ? normalizePlanKey(payload.planKey) : undefined,
+    smsEnabled: getBool(["smsEnabled"], undefined),
+    whatsappEnabled: getBool(["whatsappEnabled"], undefined),
+    callEnabled: getBool(["callEnabled"], undefined),
+    smsTemplates,
+    whatsappTemplates,
+    availabilityMode: hasKey(payload, "availabilityMode")
+      ? normalizeAvailabilityMode(payload.availabilityMode)
+      : undefined,
+    availabilitySchedule: hasKey(payload, "availabilitySchedule")
+      ? normalizeAvailabilitySchedule(payload.availabilitySchedule)
+      : undefined,
+    faqItems,
+    setupStep: hasKey(payload, "setupStep") ? normalizeStep(payload.setupStep, 1) : undefined,
+    setupCompleted: hasKey(payload, "setupCompleted")
+      ? normalizeBoolean(payload.setupCompleted, false)
+      : undefined,
   };
 }
 
@@ -344,7 +498,14 @@ function getVoiceOption(voiceKey: string) {
 }
 
 function buildAssistantPrompt(
-  { profile = {}, assistant = {}, voice = {}, number = {} }: Record<string, any>,
+  {
+    profile = {},
+    assistant = {},
+    voice = {},
+    number = {},
+    channelSettings = {},
+    faqs = [],
+  }: Record<string, any>,
 ) {
   const services = Array.isArray(profile.services) ? profile.services : [];
   const servicesText = services.length > 0 ? services.join(", ") : "niet gespecificeerd";
@@ -354,17 +515,34 @@ function buildAssistantPrompt(
   const tone = profile.tone_of_voice || profile.toneOfVoice || "vriendelijk en duidelijk";
   const company = profile.company_name || assistant.display_name || "dit bedrijf";
   const selectedNumber = number.e164 || "nog niet live";
+  const websiteUrl = profile.website_url || "niet ingevuld";
+  const roleDescription = profile.role_description || "servicegerichte receptioniste";
+  const handoffRules = profile.handoff_rules || "stuur door bij spoed of complexe cases";
+  const faqPreview = Array.isArray(faqs) && faqs.length > 0
+    ? faqs
+      .slice(0, 5)
+      .map((entry: Record<string, any>, index: number) => `${index + 1}. ${entry.question}: ${entry.answer}`)
+      .join(" | ")
+    : "nog geen FAQ ingesteld";
+  const availabilityMode = channelSettings?.availability_mode === "custom_hours"
+    ? "alleen binnen opgegeven tijden"
+    : "altijd beschikbaar";
 
   return [
     "Je bent een Nederlandse AI telefoon-assistent voor inkomende klantgesprekken.",
     `Bedrijf: ${company}`,
+    `Website: ${websiteUrl}`,
     `Diensten: ${servicesText}`,
     `Prijzen: ${pricing}`,
     `Openingstijden: ${openingHours}`,
     `Doel van gesprek: ${goals}`,
+    `Rol: ${roleDescription}`,
+    `Doorstuurregels: ${handoffRules}`,
     `Tone of voice: ${tone}`,
     `Gekozen stem: ${voice.display_name || "standaard stem"}`,
     `Gekozen nummer: ${selectedNumber}`,
+    `Beschikbaarheid: ${availabilityMode}`,
+    `FAQ context: ${faqPreview}`,
     "Regels:",
     "- Geef korte, natuurlijke antwoorden.",
     "- Stel 1 vervolgvraag als informatie ontbreekt.",
@@ -440,6 +618,105 @@ async function fetchSelectedNumber(dbClient: any, assistantId: string) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+async function fetchFaqEntries(dbClient: any, assistantId: string) {
+  const { data, error } = await dbClient
+    .from("assistant_faq_entries")
+    .select("*")
+    .eq("assistant_id", assistantId)
+    .eq("is_active", true)
+    .order("position", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+async function fetchChannelSettings(dbClient: any, assistantId: string) {
+  const { data, error } = await dbClient
+    .from("assistant_channel_settings")
+    .select("*")
+    .eq("assistant_id", assistantId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function getAvatarOption(key: unknown) {
+  const avatarKey = safeText(key);
+  return AVATAR_OPTIONS.find((entry) => entry.key === avatarKey) || AVATAR_OPTIONS[0];
+}
+
+function buildWizardChecklist(params: {
+  assistant: Record<string, any>;
+  profile: Record<string, any> | null;
+  voice: Record<string, any> | null;
+  faqs: Array<Record<string, any>>;
+  channelSettings: Record<string, any> | null;
+}) {
+  const { assistant, profile, voice, faqs, channelSettings } = params;
+
+  const identityDone = Boolean(assistant?.display_name && assistant?.avatar_key);
+  const websiteDone = Boolean(profile?.website_url && (profile?.goals || profile?.primary_goal || profile?.company_name));
+  const voiceDone = Boolean(voice?.voice_key);
+  const instructionsDone = Boolean(profile?.role_description || profile?.handoff_rules || (faqs?.length || 0) > 0);
+  const availabilityDone = Boolean(
+    channelSettings?.availability_mode === "always" ||
+      (channelSettings?.availability_mode === "custom_hours" &&
+        channelSettings?.availability_schedule &&
+        Object.keys(channelSettings.availability_schedule).length > 0),
+  );
+
+  const checklist = [
+    {
+      key: "identiteit",
+      label: "Identiteit",
+      done: identityDone,
+      description: identityDone ? "Naam en avatar zijn gekozen." : "Kies naam en avatar.",
+    },
+    {
+      key: "website",
+      label: "Website",
+      done: websiteDone,
+      description: websiteDone
+        ? "Website en hoofddoel zijn ingevuld."
+        : "Vul website en hulpdoel in.",
+    },
+    {
+      key: "stem",
+      label: "Stem",
+      done: voiceDone,
+      description: voiceDone ? "Stem is gekozen." : "Kies een stem.",
+    },
+    {
+      key: "instructies",
+      label: "Instructies",
+      done: instructionsDone,
+      description: instructionsDone
+        ? "Rol en FAQ zijn ingesteld."
+        : "Voeg rolregels en FAQ toe.",
+    },
+    {
+      key: "bereikbaarheid",
+      label: "Bereikbaarheid",
+      done: availabilityDone,
+      description: availabilityDone
+        ? "Beschikbaarheid staat goed."
+        : "Kies beschikbaarheid en tijden.",
+    },
+  ];
+
+  const fallbackStep = checklist.findIndex((entry) => !entry.done) + 1 || 5;
+  const completedCount = checklist.filter((entry) => entry.done).length;
+  const resolvedStep = normalizeStep(assistant?.setup_step, fallbackStep || 1);
+  const completed = Boolean(assistant?.setup_completed) || completedCount === checklist.length;
+
+  return {
+    step: resolvedStep,
+    completed,
+    completedCount,
+    totalSteps: checklist.length,
+    checklist,
+  };
 }
 
 async function upsertUsage(dbClient: any, payload: Record<string, unknown>) {
@@ -1404,31 +1681,133 @@ async function handleAdminProvisionRun(req: Request) {
   }
 }
 
+async function composeAssistantState(dbClient: any, userId: string) {
+  const assistant = await ensureAssistant(dbClient, userId);
+  const profile = await fetchProfile(dbClient, assistant.id);
+  const voice = await fetchSelectedVoice(dbClient, assistant.id);
+  const number = await fetchSelectedNumber(dbClient, assistant.id);
+  const faqItems = await fetchFaqEntries(dbClient, assistant.id);
+  const channelSettings = await fetchChannelSettings(dbClient, assistant.id);
+  const integrationsRaw = await fetchIntegrationsForAssistant(dbClient, assistant.id);
+  const integrations = integrationsRaw.map((entry: Record<string, any>) => sanitizeIntegration(entry));
+
+  const { data: invoice } = await dbClient
+    .from("invoices")
+    .select("*")
+    .eq("assistant_id", assistant.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: provisioningJob } = await dbClient
+    .from("provisioning_jobs")
+    .select("*")
+    .eq("assistant_id", assistant.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: subscription } = await dbClient
+    .from("subscription_state")
+    .select("*")
+    .eq("assistant_id", assistant.id)
+    .maybeSingle();
+
+  const selectedPlan = getPlanConfig(subscription?.plan_key || assistant.desired_plan);
+  const wizard = buildWizardChecklist({
+    assistant,
+    profile,
+    voice,
+    faqs: faqItems,
+    channelSettings,
+  });
+  const avatar = getAvatarOption(assistant?.avatar_key);
+
+  return {
+    assistant,
+    profile,
+    voice,
+    number,
+    latestInvoice: invoice || null,
+    latestProvisioningJob: provisioningJob || null,
+    subscription: subscription || null,
+    integrations,
+    plan: {
+      ...selectedPlan,
+      metrics: estimatePlanMetrics(selectedPlan),
+    },
+    identity: {
+      name: assistant?.display_name || profile?.company_name || "Mijn assistent",
+      avatarKey: assistant?.avatar_key || avatar.key,
+      avatar,
+    },
+    channels: {
+      callEnabled: channelSettings?.call_enabled ?? true,
+      smsEnabled: channelSettings?.sms_enabled ?? false,
+      whatsappEnabled: channelSettings?.whatsapp_enabled ?? false,
+      smsTemplates: channelSettings?.sms_templates || [],
+      whatsappTemplates: channelSettings?.whatsapp_templates || [],
+      availabilityMode: channelSettings?.availability_mode || "always",
+      availabilitySchedule: channelSettings?.availability_schedule || {},
+    },
+    faqItems,
+    wizard,
+  };
+}
+
 async function handleOnboardingSave(
   req: Request,
   user: any,
   accessToken: string,
   overridePayload: Record<string, unknown> | null = null,
+  mode: "full" | "partial" = "full",
 ) {
   try {
     const dbClient = getDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
     const body = await parseBody(req) as Record<string, unknown>;
-    const payload = onboardingFromPayload(overridePayload || body || {});
-    const selectedVoiceOption = getVoiceOption(payload.voiceKey);
+    const rawPayload = (overridePayload || body || {}) as Record<string, unknown>;
+    const payload = onboardingFromPayload(rawPayload, { partial: mode === "partial" });
+
+    const existingProfile = await fetchProfile(dbClient, assistant.id);
+    const existingVoice = await fetchSelectedVoice(dbClient, assistant.id);
+    const existingNumber = await fetchSelectedNumber(dbClient, assistant.id);
+    const existingChannelSettings = await fetchChannelSettings(dbClient, assistant.id);
+
+    const companyName = payload.companyName !== undefined
+      ? payload.companyName
+      : safeText(existingProfile?.company_name || assistant.display_name, "Mijn Bedrijf");
+    const assistantName = payload.assistantName !== undefined
+      ? payload.assistantName
+      : safeText(assistant.display_name, companyName);
+    const avatar = getAvatarOption(payload.avatarKey || assistant.avatar_key || "avatar_01");
 
     const profilePayload = {
       assistant_id: assistant.id,
       user_id: user.id,
-      company_name: payload.companyName,
-      business_type: payload.businessType,
-      services: payload.services,
-      pricing: payload.pricing,
-      opening_hours: payload.openingHours,
-      tone_of_voice: payload.toneOfVoice,
-      goals: payload.goals,
-      greeting: payload.greeting,
-      knowledge: payload.knowledge,
+      company_name: companyName,
+      business_type: payload.businessType !== undefined ? payload.businessType : (existingProfile?.business_type || null),
+      services: payload.services !== undefined ? payload.services : (existingProfile?.services || []),
+      pricing: payload.pricing !== undefined ? payload.pricing : (existingProfile?.pricing || null),
+      opening_hours: payload.openingHours !== undefined ? payload.openingHours : (existingProfile?.opening_hours || null),
+      tone_of_voice: payload.toneOfVoice !== undefined
+        ? payload.toneOfVoice
+        : (existingProfile?.tone_of_voice || "professioneel en vriendelijk"),
+      goals: payload.goals !== undefined
+        ? payload.goals
+        : (payload.primaryGoal !== undefined ? payload.primaryGoal : (existingProfile?.goals || null)),
+      greeting: payload.greeting !== undefined ? payload.greeting : (existingProfile?.greeting || null),
+      knowledge: payload.knowledge !== undefined ? payload.knowledge : (existingProfile?.knowledge || null),
+      website_url: payload.websiteUrl !== undefined ? payload.websiteUrl : (existingProfile?.website_url || null),
+      secondary_language: payload.secondaryLanguage !== undefined
+        ? payload.secondaryLanguage
+        : (existingProfile?.secondary_language || null),
+      role_description: payload.roleDescription !== undefined
+        ? payload.roleDescription
+        : (existingProfile?.role_description || null),
+      handoff_rules: payload.handoffRules !== undefined
+        ? payload.handoffRules
+        : (existingProfile?.handoff_rules || null),
       updated_at: nowIso(),
     };
 
@@ -1437,24 +1816,28 @@ async function handleOnboardingSave(
       .upsert(profilePayload, { onConflict: "assistant_id" });
     if (profileError) throw profileError;
 
-    await dbClient.from("assistant_voices").update({ selected: false, updated_at: nowIso() }).eq("assistant_id", assistant.id);
-    const { error: voiceError } = await dbClient.from("assistant_voices").upsert(
-      {
-        assistant_id: assistant.id,
-        user_id: user.id,
-        voice_key: selectedVoiceOption.key,
-        display_name: selectedVoiceOption.name,
-        provider: selectedVoiceOption.provider,
-        external_voice_id: selectedVoiceOption.externalVoiceId,
-        preview_url: selectedVoiceOption.previewUrl,
-        twilio_voice: selectedVoiceOption.twilioVoice,
-        selected: true,
-        status: "selected",
-        updated_at: nowIso(),
-      },
-      { onConflict: "assistant_id,voice_key" },
-    );
-    if (voiceError) throw voiceError;
+    const resolvedVoiceKey = payload.voiceKey || existingVoice?.voice_key || VOICE_OPTIONS[0].key;
+    if (resolvedVoiceKey) {
+      const selectedVoiceOption = getVoiceOption(resolvedVoiceKey);
+      await dbClient.from("assistant_voices").update({ selected: false, updated_at: nowIso() }).eq("assistant_id", assistant.id);
+      const { error: voiceError } = await dbClient.from("assistant_voices").upsert(
+        {
+          assistant_id: assistant.id,
+          user_id: user.id,
+          voice_key: selectedVoiceOption.key,
+          display_name: selectedVoiceOption.name,
+          provider: selectedVoiceOption.provider,
+          external_voice_id: selectedVoiceOption.externalVoiceId,
+          preview_url: selectedVoiceOption.previewUrl,
+          twilio_voice: selectedVoiceOption.twilioVoice,
+          selected: true,
+          status: "selected",
+          updated_at: nowIso(),
+        },
+        { onConflict: "assistant_id,voice_key" },
+      );
+      if (voiceError) throw voiceError;
+    }
 
     if (payload.numberE164) {
       await dbClient.from("assistant_numbers").update({ selected: false, updated_at: nowIso() }).eq("assistant_id", assistant.id);
@@ -1466,7 +1849,7 @@ async function handleOnboardingSave(
           e164: payload.numberE164,
           display_label: numberLabel,
           selected: true,
-          status: "reserved",
+          status: existingNumber?.status === "live" ? "live" : "reserved",
           source: "wizard",
           updated_at: nowIso(),
         },
@@ -1475,16 +1858,85 @@ async function handleOnboardingSave(
       if (numberError) throw numberError;
     }
 
+    const channelPayload = {
+      assistant_id: assistant.id,
+      user_id: user.id,
+      call_enabled: payload.callEnabled !== undefined ? payload.callEnabled : (existingChannelSettings?.call_enabled ?? true),
+      sms_enabled: payload.smsEnabled !== undefined ? payload.smsEnabled : (existingChannelSettings?.sms_enabled ?? false),
+      whatsapp_enabled: payload.whatsappEnabled !== undefined
+        ? payload.whatsappEnabled
+        : (existingChannelSettings?.whatsapp_enabled ?? false),
+      sms_templates: hasKey(rawPayload, "smsTemplates")
+        ? payload.smsTemplates || []
+        : (existingChannelSettings?.sms_templates || []),
+      whatsapp_templates: hasKey(rawPayload, "whatsappTemplates")
+        ? payload.whatsappTemplates || []
+        : (existingChannelSettings?.whatsapp_templates || []),
+      availability_mode: payload.availabilityMode !== undefined
+        ? payload.availabilityMode
+        : (existingChannelSettings?.availability_mode || "always"),
+      availability_schedule: payload.availabilitySchedule !== undefined
+        ? payload.availabilitySchedule
+        : (existingChannelSettings?.availability_schedule || {}),
+      updated_at: nowIso(),
+    };
+
+    const { error: channelError } = await dbClient
+      .from("assistant_channel_settings")
+      .upsert(channelPayload, { onConflict: "assistant_id" });
+    if (channelError) throw channelError;
+
+    if (hasKey(rawPayload, "faqItems")) {
+      const faqItems = payload.faqItems || [];
+      const { error: deleteFaqError } = await dbClient
+        .from("assistant_faq_entries")
+        .delete()
+        .eq("assistant_id", assistant.id);
+      if (deleteFaqError) throw deleteFaqError;
+
+      if (faqItems.length > 0) {
+        const rows = faqItems.map((entry: any, index: number) => ({
+          assistant_id: assistant.id,
+          user_id: user.id,
+          question: safeText(entry.question),
+          answer: safeText(entry.answer),
+          position: Number(entry.position || index + 1),
+          is_active: normalizeBoolean(entry.isActive, true),
+          updated_at: nowIso(),
+        }));
+        const { error: faqInsertError } = await dbClient.from("assistant_faq_entries").insert(rows);
+        if (faqInsertError) throw faqInsertError;
+      }
+    }
+
     const profile = await fetchProfile(dbClient, assistant.id);
     const selectedVoice = await fetchSelectedVoice(dbClient, assistant.id);
     const selectedNumber = await fetchSelectedNumber(dbClient, assistant.id);
-    const prompt = buildAssistantPrompt({ profile, assistant, voice: selectedVoice, number: selectedNumber });
+    const channelSettings = await fetchChannelSettings(dbClient, assistant.id);
+    const faqItems = await fetchFaqEntries(dbClient, assistant.id);
+    const planKey = payload.planKey || assistant.desired_plan || DEFAULT_PLAN.key;
+    const setupStep = payload.setupStep !== undefined ? payload.setupStep : normalizeStep(assistant.setup_step, 1);
+    const setupCompleted = payload.setupCompleted !== undefined
+      ? payload.setupCompleted
+      : Boolean(assistant.setup_completed);
+
+    const prompt = buildAssistantPrompt({
+      profile,
+      assistant,
+      voice: selectedVoice,
+      number: selectedNumber,
+      channelSettings,
+      faqs: faqItems,
+    });
 
     const { data: updatedAssistant, error: assistantUpdateError } = await dbClient.from("assistants").update({
-      display_name: payload.companyName,
-      desired_plan: payload.planKey,
+      display_name: assistantName || companyName,
+      avatar_key: avatar.key,
+      desired_plan: planKey,
       prompt,
       status: "configured",
+      setup_step: setupStep,
+      setup_completed: setupCompleted,
       updated_at: nowIso(),
     }).eq("id", assistant.id).select("*").single();
     if (assistantUpdateError) throw assistantUpdateError;
@@ -1492,21 +1944,131 @@ async function handleOnboardingSave(
     await upsertUsage(dbClient, {
       assistant_id: assistant.id,
       user_id: user.id,
-      usage_type: "onboarding_save",
+      usage_type: mode === "partial" ? "onboarding_step_save" : "onboarding_save",
       quantity: 1,
       unit: "event",
       amount_eur: 0,
-      metadata: { step: "wizard" },
+      metadata: { setupStep },
       occurred_at: nowIso(),
     });
 
+    const state = await composeAssistantState(dbClient, user.id);
     return json({
       success: true,
-      assistant: updatedAssistant,
-      profile,
-      voice: selectedVoice,
-      number: selectedNumber,
+      mode,
       prompt,
+      assistant: updatedAssistant,
+      ...state,
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleOnboardingStepSave(req: Request, user: any, accessToken: string) {
+  return handleOnboardingSave(req, user, accessToken, null, "partial");
+}
+
+async function handleOnboardingProgress(user: any, accessToken: string) {
+  try {
+    const dbClient = getDbClient(accessToken);
+    const state = await composeAssistantState(dbClient, user.id);
+    return json({
+      success: true,
+      wizard: state.wizard,
+      identity: state.identity,
+      channels: state.channels,
+      faqItems: state.faqItems,
+    });
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleOnboardingAiSuggest(req: Request, user: any, accessToken: string) {
+  try {
+    const dbClient = getDbClient(accessToken);
+    const assistant = await ensureAssistant(dbClient, user.id);
+    const body = await parseBody(req) as Record<string, unknown>;
+    const step = safeText(body.step, "identiteit").toLowerCase();
+    const profile = await fetchProfile(dbClient, assistant.id);
+
+    const companyName = safeText(body.companyName || profile?.company_name || assistant.display_name, "Mijn Bedrijf");
+    const assistantName = safeText(body.assistantName || assistant.display_name, companyName);
+    const businessType = safeText(body.businessType || profile?.business_type, "dienstverlener");
+    const primaryGoal = safeText(body.primaryGoal || profile?.goals, "vragen beantwoorden en terugbelverzoeken noteren");
+
+    const fallbackSuggestions: Record<string, unknown> = {
+      assistantNameSuggestions: [
+        `${companyName} Assistent`,
+        `${assistantName || companyName} Support`,
+        `${companyName} Telefoniste`,
+      ],
+      roleDescription: `Je bent de vriendelijke telefonische assistent van ${companyName}. Je helpt bellers snel, duidelijk en rustig.`,
+      handoffRules:
+        "Bij spoed, klachten of onduidelijkheid verbind je direct door of noteer je een terugbelverzoek met naam en telefoonnummer.",
+      primaryGoal,
+      faqItems: [
+        {
+          question: `Wat doet ${companyName}?`,
+          answer: `${companyName} is actief als ${businessType}. We helpen klanten met duidelijke informatie en snelle opvolging.`,
+        },
+        {
+          question: "Hoe snel krijg ik reactie?",
+          answer: "Je krijgt zo snel mogelijk reactie van het team, meestal binnen één werkdag.",
+        },
+      ],
+      smsTemplates: [
+        {
+          title: "Bevestiging",
+          trigger: "Na telefoongesprek",
+          text: `Bedankt voor je gesprek met ${companyName}. We komen zo snel mogelijk bij je terug.`,
+        },
+      ],
+    };
+
+    let suggestions = fallbackSuggestions;
+
+    if (openai) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: OPENAI_MODEL,
+          temperature: 0.4,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Geef JSON zonder markdown met heldere onboarding suggesties in het Nederlands voor een AI telefoonassistent.",
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                step,
+                companyName,
+                assistantName,
+                businessType,
+                primaryGoal,
+              }),
+            },
+          ],
+        });
+        const raw = completion.choices?.[0]?.message?.content || "";
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          suggestions = {
+            ...fallbackSuggestions,
+            ...parsed,
+          };
+        }
+      } catch {
+        suggestions = fallbackSuggestions;
+      }
+    }
+
+    return json({
+      success: true,
+      step,
+      suggestions,
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -1516,50 +2078,91 @@ async function handleOnboardingSave(
 async function handleAssistantState(user: any, accessToken: string) {
   try {
     const dbClient = getDbClient(accessToken);
+    const state = await composeAssistantState(dbClient, user.id);
+    return json(state);
+  } catch (error) {
+    return dbErrorToResponse(error);
+  }
+}
+
+async function handleActivationStartTrial(req: Request, user: any, accessToken: string) {
+  try {
+    const dbClient = getDbClient(accessToken);
     const assistant = await ensureAssistant(dbClient, user.id);
-    const profile = await fetchProfile(dbClient, assistant.id);
-    const voice = await fetchSelectedVoice(dbClient, assistant.id);
-    const number = await fetchSelectedNumber(dbClient, assistant.id);
-    const integrationsRaw = await fetchIntegrationsForAssistant(dbClient, assistant.id);
-    const integrations = integrationsRaw.map((entry: Record<string, any>) => sanitizeIntegration(entry));
+    const body = await parseBody(req) as Record<string, unknown>;
+    const plan = getPlanConfig(body?.planKey || assistant.desired_plan);
+    const startedAt = nowIso();
+    const invoiceNumber =
+      `TRIAL-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 100000)}`;
 
-    const { data: invoice } = await dbClient
-      .from("invoices")
-      .select("*")
-      .eq("assistant_id", assistant.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const { data: provisioningJob } = await dbClient
-      .from("provisioning_jobs")
-      .select("*")
-      .eq("assistant_id", assistant.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const { data: subscription } = await dbClient
-      .from("subscription_state")
-      .select("*")
-      .eq("assistant_id", assistant.id)
-      .maybeSingle();
-
-    const selectedPlan = getPlanConfig(subscription?.plan_key || assistant.desired_plan);
-
-    return json({
-      assistant,
-      profile,
-      voice,
-      number,
-      latestInvoice: invoice || null,
-      latestProvisioningJob: provisioningJob || null,
-      subscription: subscription || null,
-      integrations,
-      plan: {
-        ...selectedPlan,
-        metrics: estimatePlanMetrics(selectedPlan),
+    const { data: billingAccount, error: billingError } = await dbClient.from("billing_accounts").upsert(
+      {
+        user_id: user.id,
+        email: user.email || null,
+        payer_name: safeText(body?.payerName || user.user_metadata?.full_name || ""),
+        status: "active",
+        updated_at: startedAt,
       },
+      { onConflict: "user_id" },
+    ).select("*").single();
+    if (billingError) throw billingError;
+
+    const { data: invoice, error: invoiceError } = await dbClient.from("invoices").insert({
+      assistant_id: assistant.id,
+      user_id: user.id,
+      billing_account_id: billingAccount.id,
+      invoice_number: invoiceNumber,
+      status: "invoice_sent",
+      plan_key: plan.key,
+      amount_eur: 0,
+      currency: "EUR",
+      due_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      notes: "trial_fallback_pending_manual_approval",
+      updated_at: startedAt,
+    }).select("*").single();
+    if (invoiceError) throw invoiceError;
+
+    const { error: assistantError } = await dbClient.from("assistants").update({
+      billing_status: "invoice_sent",
+      desired_plan: plan.key,
+      status: "awaiting_payment",
+      live_status: "not_live",
+      updated_at: startedAt,
+    }).eq("id", assistant.id);
+    if (assistantError) throw assistantError;
+
+    const { error: subscriptionError } = await dbClient.from("subscription_state").upsert(
+      {
+        assistant_id: assistant.id,
+        user_id: user.id,
+        plan_key: plan.key,
+        status: "pending_payment",
+        included_minutes: plan.includedMinutes,
+        included_tasks: plan.includedTasks,
+        updated_at: startedAt,
+      },
+      { onConflict: "assistant_id" },
+    );
+    if (subscriptionError) throw subscriptionError;
+
+    await upsertUsage(dbClient, {
+      assistant_id: assistant.id,
+      user_id: user.id,
+      usage_type: "trial_start",
+      quantity: 1,
+      unit: "event",
+      amount_eur: 0,
+      metadata: { planKey: plan.key, mode: "fallback" },
+      occurred_at: startedAt,
+    });
+
+    const state = await composeAssistantState(dbClient, user.id);
+    return json({
+      success: true,
+      mode: "trial_fallback",
+      invoice,
+      message: "Proefperiode intent is opgeslagen. Je assistent blijft not_live tot betaalgoedkeuring.",
+      ...state,
     });
   } catch (error) {
     return dbErrorToResponse(error);
@@ -2289,6 +2892,10 @@ Deno.serve(async (req) => {
       return json(VOICE_OPTIONS);
     }
 
+    if (method === "GET" && path === "/avatars/options") {
+      return json(AVATAR_OPTIONS);
+    }
+
     if (method === "GET" && path === "/pricing/plans") {
       const plans = Object.values(PLAN_CATALOG).map((plan) => ({
         ...plan,
@@ -2322,6 +2929,24 @@ Deno.serve(async (req) => {
       return await handleOnboardingSave(req, auth.user, auth.token, null);
     }
 
+    if (method === "POST" && path === "/onboarding/step-save") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleOnboardingStepSave(req, auth.user, auth.token);
+    }
+
+    if (method === "GET" && path === "/onboarding/progress") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleOnboardingProgress(auth.user, auth.token);
+    }
+
+    if (method === "POST" && path === "/onboarding/ai-suggest") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleOnboardingAiSuggest(req, auth.user, auth.token);
+    }
+
     if (method === "POST" && path === "/assistant/config") {
       const auth = await requireUser(req);
       if (auth.error) return auth.error;
@@ -2345,6 +2970,12 @@ Deno.serve(async (req) => {
       const auth = await requireUser(req);
       if (auth.error) return auth.error;
       return await handleInvoiceRequest(req, auth.user, auth.token);
+    }
+
+    if (method === "POST" && path === "/activation/start-trial") {
+      const auth = await requireUser(req);
+      if (auth.error) return auth.error;
+      return await handleActivationStartTrial(req, auth.user, auth.token);
     }
 
     if (method === "POST" && path === "/integrations/connect") {

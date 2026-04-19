@@ -463,6 +463,13 @@ const Overview = () => {
   const pendingIntegrations = integrations.filter((entry) => entry.status === 'pending_setup');
   const companyName =
     assistantState?.profile?.company_name || assistantState?.assistant?.display_name || assistantConfig?.companyName || 'je bedrijf';
+  const identityName = assistantState?.identity?.name || assistantState?.assistant?.display_name || companyName;
+  const identityAvatar = assistantState?.identity?.avatar?.imageUrl || null;
+  const wizardChecklist = Array.isArray(assistantState?.wizard?.checklist) ? assistantState.wizard.checklist : [];
+  const wizardStep = Number(assistantState?.wizard?.step || 1);
+  const wizardCompletedCount =
+    Number(assistantState?.wizard?.completedCount) ||
+    wizardChecklist.filter((entry) => entry.done).length;
   const hasBusinessProfile = Boolean(
     assistantState?.profile?.company_name &&
       (assistantState?.profile?.goals || assistantState?.profile?.opening_hours || assistantState?.profile?.pricing)
@@ -473,7 +480,7 @@ const Overview = () => {
     assistantState?.latestInvoice?.status || assistantState?.assistant?.billing_status || ''
   );
   const isLive = assistantState?.assistant?.live_status === 'live';
-  const setupSteps = [
+  const fallbackSetupSteps = [
     {
       title: 'Bedrijfsbriefing',
       description: hasBusinessProfile
@@ -511,7 +518,15 @@ const Overview = () => {
       tone: 'default'
     }
   ];
-  const completedSteps = setupSteps.filter((step) => step.done).length;
+  const setupSteps = wizardChecklist.length
+    ? wizardChecklist.map((entry, index) => ({
+      title: entry.label,
+      description: entry.description || `Stap ${index + 1} in setup flow`,
+      done: Boolean(entry.done),
+      tone: entry.done ? 'success' : 'default'
+    }))
+    : fallbackSetupSteps;
+  const completedSteps = wizardChecklist.length ? wizardCompletedCount : setupSteps.filter((step) => step.done).length;
   const integrationButtonDisabled =
     integrationSaving ||
     !integrationDraft.storeUrl.trim() ||
@@ -611,6 +626,48 @@ const Overview = () => {
           {isAdmin ? ' Je adminconsole staat ook voor je klaar in het menu.' : ''}
         </p>
       </div>
+
+      <section className="glass-panel dashboard-setup-strip">
+        <div className="dashboard-setup-strip-main">
+          <div className="dashboard-identity-pill">
+            {identityAvatar ? (
+              <img src={identityAvatar} alt={identityName} className="dashboard-avatar" />
+            ) : (
+              <div className="dashboard-avatar fallback">{identityName?.slice(0, 1) || 'A'}</div>
+            )}
+            <div>
+              <strong>{identityName}</strong>
+              <small>
+                Stap {wizardStep} van {setupSteps.length} · {completedSteps} klaar
+              </small>
+            </div>
+          </div>
+
+          <div className="setup-strip-meta">
+            <div>
+              <span>Stem</span>
+              <strong>{assistantState?.voice?.display_name || 'Nog niet gekozen'}</strong>
+            </div>
+            <div>
+              <span>Nummer</span>
+              <strong>{assistantState?.number?.e164 || 'Nog niet gekozen'}</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>{assistantState?.assistant?.live_status || 'not_live'}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-setup-strip-steps">
+          {setupSteps.map((step, index) => (
+            <div key={step.title} className={`setup-strip-step ${step.done ? 'done' : ''} ${wizardStep === index + 1 ? 'active' : ''}`}>
+              <span>{index + 1}</span>
+              <p>{step.title}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {!apiConfigured && (
         <div className="glass-panel setup-feedback setup-feedback-warn">
@@ -818,7 +875,7 @@ const Overview = () => {
           <div>
             <h3><ShoppingCart size={18} /> Webshop en orderstatus</h3>
             <p className="text-muted">
-              Klanten hoeven standaard geen API-sleutels te snappen. Kies hoe de koppeling geregeld wordt en laat de rest op de achtergrond afmaken.
+              Klanten hoeven geen technische stappen te doen. Kies hoe de koppeling geregeld wordt en laat de rest op de achtergrond afronden.
             </p>
           </div>
         </div>
@@ -857,18 +914,18 @@ const Overview = () => {
               </button>
             </div>
 
-            <div className="commerce-helper-card">
-              <strong>
-                {integrationDraft.mode === 'concierge'
-                  ? 'Rustige flow voor niet-technische klanten'
-                  : 'Expertmodus voor directe koppeling'}
-              </strong>
-              <p className="text-muted">
-                {integrationDraft.mode === 'concierge'
-                  ? 'Je klant kiest alleen het platform, de shop-URL en eventueel een notitie. Jij of admin rondt de API-koppeling later af.'
-                  : 'Gebruik dit alleen als je de juiste API-gegevens al bij de hand hebt.'}
-              </p>
-            </div>
+              <div className="commerce-helper-card">
+                <strong>
+                  {integrationDraft.mode === 'concierge'
+                    ? 'Rustige flow voor niet-technische klanten'
+                    : 'Expertmodus voor directe koppeling'}
+                </strong>
+                <p className="text-muted">
+                  {integrationDraft.mode === 'concierge'
+                    ? 'Je klant kiest alleen platform, shop-URL en een korte notitie. Jij of admin rondt de koppeling daarna af.'
+                    : 'Gebruik dit alleen als je de benodigde webshop-inloggegevens al hebt.'}
+                </p>
+              </div>
 
             <div className="commerce-form-grid">
               <label>
