@@ -12,14 +12,14 @@ const LandingPage = () => {
       <PublicHeader active="features" />
 
       <main className="belliq-main overflow-hidden">
-        <section className="max-w-7xl mx-auto px-6 mb-24">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-20 sm:mb-24">
           <div className="flex flex-col md:flex-row items-center gap-16">
             <div className="flex-1 text-center md:text-left">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-secondary-container text-on-secondary-container rounded-full text-sm font-medium mb-6">
                 <span className="w-2 h-2 bg-primary rounded-full animate-pulse"></span>
                 De toekomst van klantcontact
               </div>
-              <h1 className="font-headline text-5xl md:text-7xl font-extrabold tracking-tight text-on-surface mb-8 leading-[1.1]">
+              <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-on-surface mb-8 leading-[1.1]">
                 Breng <span className="text-primary italic">rust</span> in je communicatie.
               </h1>
               <p className="text-on-surface-variant text-lg md:text-xl max-w-xl leading-relaxed mb-10">
@@ -42,7 +42,7 @@ const LandingPage = () => {
               </div>
             </div>
 
-            <div className="flex-1 relative">
+            <div className="flex-1 relative w-full max-w-[560px]">
               <div className="w-full aspect-square rounded-xl overflow-hidden shadow-2xl shadow-indigo-500/10">
                 <img
                   className="w-full h-full object-cover"
@@ -51,7 +51,7 @@ const LandingPage = () => {
                 />
               </div>
 
-              <div className="absolute -bottom-6 -left-6 glass-card p-6 rounded-lg shadow-2xl max-w-xs border border-white/20">
+              <div className="absolute -bottom-6 left-4 sm:-left-6 w-[84%] sm:w-auto glass-card p-4 sm:p-6 rounded-lg shadow-2xl max-w-xs border border-white/20">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                     <span className="material-symbols-outlined text-white">graphic_eq</span>
@@ -75,9 +75,9 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-6 py-20">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-            <div className="md:col-span-8 bg-surface-container-lowest rounded-lg p-10 group hover:bg-white transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 flex flex-col justify-between overflow-hidden relative">
+            <div className="md:col-span-8 bg-surface-container-lowest rounded-lg p-6 sm:p-10 group hover:bg-white transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 flex flex-col justify-between overflow-hidden relative">
               <div className="relative z-10">
                 <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mb-8 text-primary">
                   <span className="material-symbols-outlined text-3xl">nights_stay</span>
@@ -97,7 +97,7 @@ const LandingPage = () => {
               </div>
             </div>
 
-            <div className="md:col-span-4 bg-surface-container-low rounded-lg p-10 flex flex-col items-start shadow-sm hover:shadow-md transition-all">
+            <div className="md:col-span-4 bg-surface-container-low rounded-lg p-6 sm:p-10 flex flex-col items-start shadow-sm hover:shadow-md transition-all">
               <div className="w-12 h-12 bg-secondary-container rounded-2xl flex items-center justify-center mb-8 text-on-secondary-container">
                 <span className="material-symbols-outlined">psychology</span>
               </div>
@@ -117,7 +117,7 @@ const LandingPage = () => {
               </div>
             </div>
 
-            <div className="md:col-span-4 bg-surface-container-low rounded-lg p-10 shadow-sm hover:shadow-md transition-all">
+            <div className="md:col-span-4 bg-surface-container-low rounded-lg p-6 sm:p-10 shadow-sm hover:shadow-md transition-all">
               <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center mb-8 text-indigo-700">
                 <span className="material-symbols-outlined">sync_alt</span>
               </div>
@@ -132,7 +132,7 @@ const LandingPage = () => {
               </div>
             </div>
 
-            <div className="md:col-span-8 bg-surface-container-lowest rounded-lg p-10 group hover:bg-white transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 flex flex-col md:flex-row gap-10">
+            <div className="md:col-span-8 bg-surface-container-lowest rounded-lg p-6 sm:p-10 group hover:bg-white transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 flex flex-col md:flex-row gap-6 sm:gap-10">
               <div className="flex-1">
                 <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mb-8 text-primary">
                   <span className="material-symbols-outlined text-3xl">public</span>
@@ -157,7 +157,7 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-6 py-20 text-center relative">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-14 sm:py-20 text-center relative">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] -z-10"></div>
           <div className="max-w-3xl mx-auto">
             <h2 className="font-headline text-4xl md:text-5xl font-bold mb-8">Klaar voor echte rust?</h2>
@@ -168,7 +168,7 @@ const LandingPage = () => {
             <div className="inline-flex glass-card p-2 rounded-2xl shadow-xl">
               <button
                 onClick={() => navigate('/login')}
-                className="bg-indigo-700 text-white px-10 py-5 rounded-xl font-bold hover:scale-[1.05] transition-transform shadow-lg shadow-indigo-500/20"
+                className="bg-indigo-700 text-white px-7 sm:px-10 py-4 sm:py-5 rounded-xl font-bold hover:scale-[1.05] transition-transform shadow-lg shadow-indigo-500/20"
               >
                 Start je gratis proefperiode
               </button>

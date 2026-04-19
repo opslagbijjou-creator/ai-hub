@@ -16,7 +16,7 @@ const ContactPage = () => {
       <PublicHeader active="resources" />
 
       <main className="belliq-main pb-24">
-        <section className="max-w-7xl mx-auto px-6 text-center mb-20">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 text-center mb-20">
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter text-on-surface mb-6 leading-tight font-headline">
             Laten we <span className="text-primary italic">praten</span>.
           </h1>
@@ -25,7 +25,7 @@ const ContactPage = () => {
           </p>
         </section>
 
-        <section className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-7 bg-surface-container-lowest rounded-lg p-10 shadow-sm border border-outline-variant/10">
             <h2 className="text-2xl font-bold mb-8 tracking-tight font-headline">Stuur ons een bericht</h2>
             <form className="space-y-6" onSubmit={handleSubmit}>
@@ -162,7 +162,7 @@ const ContactPage = () => {
           </div>
         </section>
 
-        <section className="max-w-7xl mx-auto px-6 mt-32">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 mt-32">
           <div className="bg-on-primary-fixed rounded-lg p-12 md:p-20 text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-96 h-96 bg-primary/20 blur-[120px] rounded-full -mr-48 -mt-48"></div>
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-400/10 blur-[80px] rounded-full -ml-32 -mb-32"></div>

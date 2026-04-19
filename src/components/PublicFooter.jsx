@@ -7,7 +7,7 @@ const PublicFooter = () => {
 
   return (
     <footer className="belliq-footer">
-      <div className="max-w-7xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="bg-slate-200 h-[1px] w-full mb-8"></div>
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <button onClick={() => navigate('/')} className="flex items-center gap-2">
@@ -42,7 +42,7 @@ const PublicFooter = () => {
             </button>
           </div>
 
-          <p className="text-xs text-slate-500">© {year} Belliq. Alle rechten voorbehouden.</p>
+          <p className="text-xs text-slate-500 text-center">© {year} Belliq. Alle rechten voorbehouden.</p>
         </div>
       </div>
     </footer>
