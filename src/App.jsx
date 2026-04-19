@@ -9,6 +9,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Wizard = lazy(() => import('./pages/Wizard'));
 const PricingPage = lazy(() => import('./pages/PricingPage'));
 const InfoPage = lazy(() => import('./pages/InfoPage'));
+const ContactPage = lazy(() => import('./pages/ContactPage'));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
 const CompliancePage = lazy(() => import('./pages/CompliancePage'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
@@ -56,6 +57,7 @@ function AppRoutes() {
           <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/info" element={<InfoPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/compliance" element={<CompliancePage />} />
           <Route path="/terms" element={<TermsPage />} />

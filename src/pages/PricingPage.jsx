@@ -1,226 +1,272 @@
-import React, { useMemo, useState } from 'react';
-import { Calculator, CheckCircle2, ReceiptText, ShieldCheck, Sparkles } from 'lucide-react';
-import { PRICING_PLANS, getPlanByKey } from '../lib/pricing';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import PublicFooter from '../components/PublicFooter';
 import PublicHeader from '../components/PublicHeader';
-import './LandingPage.css';
-
-const pricingHighlights = [
-  {
-    icon: Sparkles,
-    title: 'Gratis opbouwen en testen',
-    copy: 'Je kunt je assistent configureren en in de browser testen voordat er een nummer live wordt gezet.'
-  },
-  {
-    icon: ReceiptText,
-    title: 'Abonnement start bij livegang',
-    copy: 'Facturatie hoort bij activatie. Tot dat moment hou je de keuze om eerst bij te sturen.'
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Duidelijke overage',
-    copy: 'Extra minuten en AI-taken zijn zichtbaar per pakket, zodat kosten voorspelbaar blijven.'
-  }
-];
-
-const faqs = [
-  {
-    question: 'Wanneer betaal ik echt?',
-    answer: 'Het betaalde abonnement start zodra je een nummer en live telefonie activeert. Daarvoor kun je bouwen en testen in de browser.'
-  },
-  {
-    question: 'Zijn stemmen, prompt en dashboard inbegrepen?',
-    answer: 'Ja. De onboarding, promptopbouw, stemkeuze, browser-test en usage-inzichten horen bij elk pakket.'
-  },
-  {
-    question: 'Wat gebeurt er bij extra minuten?',
-    answer: 'Zodra je boven je bundel komt, zie je per pakket het duidelijke tarief per extra minuut en per AI-taak.'
-  },
-  {
-    question: 'Kan ik later van pakket wisselen?',
-    answer: 'Ja. De structuur is juist gemaakt om klein te starten en later op te schalen zodra je volume groeit.'
-  }
-];
+import './Belliq.css';
 
 const PricingPage = () => {
-  const defaultPlan = PRICING_PLANS[1] || PRICING_PLANS[0];
-  const [selectedPlanKey, setSelectedPlanKey] = useState(defaultPlan.key);
-  const [minutes, setMinutes] = useState(defaultPlan.includedMinutes);
-  const [tasks, setTasks] = useState(defaultPlan.includedTasks);
+  const navigate = useNavigate();
 
-  const selectedPlan = getPlanByKey(selectedPlanKey);
-
-  const calculator = useMemo(() => {
-    const overageMinutes = Math.max(0, minutes - selectedPlan.includedMinutes);
-    const overageTasks = Math.max(0, tasks - selectedPlan.includedTasks);
-
-    const base = selectedPlan.monthlyPriceEur;
-    const overage = overageMinutes * selectedPlan.overageMinuteEur + overageTasks * selectedPlan.overageTaskEur;
-    const total = base + overage;
-
-    return {
-      overageMinutes,
-      overageTasks,
-      base: Number(base.toFixed(2)),
-      overage: Number(overage.toFixed(2)),
-      total: Number(total.toFixed(2))
-    };
-  }, [minutes, selectedPlan, tasks]);
+  const selectPlan = (planKey) => {
+    localStorage.setItem('selected_plan_key', planKey);
+    navigate('/login');
+  };
 
   return (
-    <div className="landing-container marketing-page">
-      <div className="marketing-grid"></div>
+    <div className="belliq-page bg-background text-on-surface selection:bg-primary-container selection:text-on-primary-container">
       <PublicHeader active="pricing" />
 
-      <section className="pricing-hero">
-        <span className="section-eyebrow centered">Prijzen</span>
-        <h1>Duidelijke pakketten voor teams die eerst willen testen en daarna pas live gaan</h1>
-        <p>
-          Geen vage activatiekosten vooraf. Je bouwt je assistent op, test hem in de browser en activeert pas daarna het pakket dat past bij je volume.
-        </p>
-      </section>
+      <main className="belliq-main pb-24">
+        <section className="max-w-7xl mx-auto px-6 mb-20 text-center">
+          <span className="inline-block px-4 py-1.5 rounded-full bg-secondary-container text-on-secondary-container text-xs font-bold uppercase tracking-widest mb-6">
+            Prijzen die meeschalen
+          </span>
+          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter text-on-surface mb-6 font-headline">
+            Kies je niveau van <span className="text-primary">Intelligentie.</span>
+          </h1>
+          <p className="text-lg text-on-surface-variant max-w-2xl mx-auto font-medium leading-relaxed">
+            Van ambitieuze startups tot wereldwijde ondernemingen. Vind het plan dat de groei van jouw organisatie
+            versnelt met onze AI-oplossingen.
+          </p>
+        </section>
 
-      <section className="pricing-intro-grid">
-        {pricingHighlights.map((item) => {
-          const Icon = item.icon;
-
-          return (
-            <article key={item.title} className="glass-panel intro-card">
-              <div className="icon-wrapper subtle">
-                <Icon size={20} color="var(--primary)" />
+        <section className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 mb-32">
+          <div className="group p-8 rounded-lg bg-surface-container-lowest border border-outline-variant/15 flex flex-col hover:scale-[1.02] transition-all duration-300">
+            <div className="mb-8">
+              <h3 className="text-xl font-bold mb-2 font-headline">Starter</h3>
+              <p className="text-on-surface-variant text-sm">
+                Perfect voor startende teams die een AI telefoon-assistent willen testen en opbouwen.
+              </p>
+            </div>
+            <div className="mb-8">
+              <div className="flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold">€299</span>
+                <span className="text-on-surface-variant font-medium">/mo</span>
               </div>
-              <h3>{item.title}</h3>
-              <p>{item.copy}</p>
-            </article>
-          );
-        })}
-      </section>
-
-      <section className="pricing-grid">
-        {PRICING_PLANS.map((plan) => {
-          const isActive = plan.key === selectedPlanKey;
-
-          return (
-            <article
-              key={plan.key}
-              className={`pricing-card glass-panel ${isActive ? 'active' : ''}`}
-              onClick={() => {
-                setSelectedPlanKey(plan.key);
-                setMinutes(plan.includedMinutes);
-                setTasks(plan.includedTasks);
-              }}
+            </div>
+            <ul className="space-y-4 mb-10 flex-grow">
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                180 belminuten per maand
+              </li>
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                450 AI-taken inbegrepen
+              </li>
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                Browser testomgeving + onboarding wizard
+              </li>
+            </ul>
+            <button
+              onClick={() => selectPlan('plan_150')}
+              className="w-full py-4 rounded-lg bg-surface-container-high text-on-surface font-bold text-sm transition-all hover:bg-surface-container-highest"
             >
-              <p className="plan-tag">{plan.tag}</p>
-              <h3>{plan.name}</h3>
-              <div className="plan-price">€{plan.monthlyPriceEur}</div>
-              <p className="plan-sub">per maand excl. btw, vanaf live activatie</p>
-
-              <ul>
-                <li>
-                  <CheckCircle2 size={16} /> {plan.includedMinutes} belminuten inbegrepen
-                </li>
-                <li>
-                  <CheckCircle2 size={16} /> {plan.includedTasks} AI-taken inbegrepen
-                </li>
-                <li>
-                  <CheckCircle2 size={16} /> €{plan.overageMinuteEur.toFixed(2)} per extra minuut
-                </li>
-                <li>
-                  <CheckCircle2 size={16} /> €{plan.overageTaskEur.toFixed(2)} per extra taak
-                </li>
-                <li>
-                  <CheckCircle2 size={16} /> Ideaal voor: {plan.idealFor}
-                </li>
-              </ul>
-            </article>
-          );
-        })}
-      </section>
-
-      <section className="calculator-panel glass-panel">
-        <div className="calculator-head">
-          <h2>
-            <Calculator size={20} /> Kosten calculator
-          </h2>
-          <p>Pas je verwachte volume aan en zie meteen wat dit per maand betekent voor het gekozen pakket.</p>
-        </div>
-
-        <div className="calculator-controls">
-          <label>
-            Belminuten per maand: <strong>{minutes}</strong>
-            <input
-              type="range"
-              min="50"
-              max="2500"
-              step="10"
-              value={minutes}
-              onChange={(event) => setMinutes(Number(event.target.value))}
-            />
-          </label>
-
-          <label>
-            AI-taken per maand: <strong>{tasks}</strong>
-            <input
-              type="range"
-              min="100"
-              max="8000"
-              step="25"
-              value={tasks}
-              onChange={(event) => setTasks(Number(event.target.value))}
-            />
-          </label>
-        </div>
-
-        <div className="calculator-stats">
-          <div>
-            <span>Abonnement</span>
-            <strong>€{calculator.base}</strong>
+              Selecteer Starter
+            </button>
           </div>
-          <div>
-            <span>Extra kosten</span>
-            <strong>€{calculator.overage}</strong>
-          </div>
-          <div>
-            <span>Extra minuten</span>
-            <strong>{calculator.overageMinutes}</strong>
-          </div>
-          <div>
-            <span>Totaal per maand</span>
-            <strong>€{calculator.total}</strong>
-          </div>
-        </div>
-      </section>
 
-      <section className="sources-panel glass-panel">
-        <h2>Wat zit standaard in elk pakket?</h2>
-        <ul>
-          <li>
-            <span>Onboarding wizard met bedrijfscontext, openingstijden en tone of voice</span>
-            <strong>Inbegrepen</strong>
-          </li>
-          <li>
-            <span>Browser-test met microfoon, AI states en transcript feedback</span>
-            <strong>Inbegrepen</strong>
-          </li>
-          <li>
-            <span>Dashboard voor usage, factuurstatus, integraties en instellingen</span>
-            <strong>Inbegrepen</strong>
-          </li>
-          <li>
-            <span>Live activatie op nummer zodra je daar klaar voor bent</span>
-            <strong>Inbegrepen</strong>
-          </li>
-        </ul>
-      </section>
+          <div className="group p-8 rounded-lg bg-white relative flex flex-col scale-105 shadow-2xl shadow-indigo-500/10 border-2 border-primary/20 hover:scale-[1.07] transition-all duration-300 z-10">
+            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-on-primary px-4 py-1 rounded-full text-xs font-bold tracking-wider">
+              AANBEVOLEN
+            </div>
+            <div className="mb-8">
+              <h3 className="text-xl font-bold mb-2 font-headline">Growth</h3>
+              <p className="text-on-surface-variant text-sm">
+                Voor groeiende teams met meer volume en behoefte aan extra capaciteit.
+              </p>
+            </div>
+            <div className="mb-8">
+              <div className="flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold">€499</span>
+                <span className="text-on-surface-variant font-medium">/mo</span>
+              </div>
+            </div>
+            <ul className="space-y-4 mb-10 flex-grow">
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                420 belminuten inbegrepen
+              </li>
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                1.100 AI-taken inbegrepen
+              </li>
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                Integraties + prioriteit support
+              </li>
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                Klaar voor live activatie na betaling
+              </li>
+            </ul>
+            <button
+              onClick={() => selectPlan('plan_275')}
+              className="w-full py-4 rounded-lg bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all hover:brightness-110"
+            >
+              Kies Growth
+            </button>
+          </div>
 
-      <section className="faq-grid">
-        {faqs.map((faq) => (
-          <article key={faq.question} className="glass-panel faq-card">
-            <h3>{faq.question}</h3>
-            <p>{faq.answer}</p>
-          </article>
-        ))}
-      </section>
+          <div className="group p-8 rounded-lg bg-surface-container-lowest border border-outline-variant/15 flex flex-col hover:scale-[1.02] transition-all duration-300">
+            <div className="mb-8">
+              <h3 className="text-xl font-bold mb-2 font-headline">Enterprise</h3>
+              <p className="text-on-surface-variant text-sm">
+                Op maat gemaakte oplossingen voor organisaties met complexe behoeften en hoge volumes.
+              </p>
+            </div>
+            <div className="mb-8">
+              <div className="flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold">Maatwerk</span>
+              </div>
+            </div>
+            <ul className="space-y-4 mb-10 flex-grow">
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                Dedicated account manager
+              </li>
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                SLA afspraken en hogere beschikbaarheid
+              </li>
+              <li className="flex items-center gap-3 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                Complexe koppelingen en workflows
+              </li>
+            </ul>
+            <button
+              onClick={() => navigate('/contact')}
+              className="w-full py-4 rounded-lg bg-inverse-surface text-inverse-on-surface font-bold text-sm transition-all hover:opacity-90"
+            >
+              Neem contact op
+            </button>
+          </div>
+        </section>
+
+        <section className="max-w-5xl mx-auto px-6 mb-32">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold tracking-tight mb-4 font-headline">Vergelijk functies</h2>
+            <p className="text-on-surface-variant">Een diepere duik in wat elk plan te bieden heeft.</p>
+          </div>
+          <div className="bg-surface-container-low rounded-lg p-1 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-surface-container-lowest">
+                    <th className="p-6 text-sm font-bold border-b border-outline-variant/10">Functie</th>
+                    <th className="p-6 text-sm font-bold border-b border-outline-variant/10">Starter</th>
+                    <th className="p-6 text-sm font-bold border-b border-outline-variant/10">Growth</th>
+                    <th className="p-6 text-sm font-bold border-b border-outline-variant/10">Enterprise</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm font-medium">
+                  <tr className="hover:bg-surface-container-highest transition-colors">
+                    <td className="p-6 border-b border-outline-variant/10">AI Modellen</td>
+                    <td className="p-6 border-b border-outline-variant/10 text-on-surface-variant">Standaard</td>
+                    <td className="p-6 border-b border-outline-variant/10">Geavanceerd</td>
+                    <td className="p-6 border-b border-outline-variant/10">Custom setup</td>
+                  </tr>
+                  <tr className="hover:bg-surface-container-highest transition-colors">
+                    <td className="p-6 border-b border-outline-variant/10">Shop-integraties</td>
+                    <td className="p-6 border-b border-outline-variant/10 text-on-surface-variant">Basis</td>
+                    <td className="p-6 border-b border-outline-variant/10">Volledig</td>
+                    <td className="p-6 border-b border-outline-variant/10">Volledig + maatwerk</td>
+                  </tr>
+                  <tr className="hover:bg-surface-container-highest transition-colors">
+                    <td className="p-6 border-b border-outline-variant/10">Team samenwerking</td>
+                    <td className="p-6 border-b border-outline-variant/10 text-on-surface-variant">1 gebruiker</td>
+                    <td className="p-6 border-b border-outline-variant/10">Tot 10 gebruikers</td>
+                    <td className="p-6 border-b border-outline-variant/10">Onbeperkt</td>
+                  </tr>
+                  <tr className="hover:bg-surface-container-highest transition-colors">
+                    <td className="p-6 border-b border-outline-variant/10">Support respons</td>
+                    <td className="p-6 border-b border-outline-variant/10 text-on-surface-variant">48 uur</td>
+                    <td className="p-6 border-b border-outline-variant/10">12 uur</td>
+                    <td className="p-6 border-b border-outline-variant/10">Direct</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section className="max-w-4xl mx-auto px-6 mb-24">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold tracking-tight mb-4 font-headline">Veelgestelde vragen</h2>
+            <p className="text-on-surface-variant">Alles wat je moet weten over onze diensten en betalingen.</p>
+          </div>
+          <div className="space-y-4">
+            <div className="p-6 rounded-lg bg-surface-container-low">
+              <h4 className="font-bold text-on-surface mb-3">Kan ik op elk moment annuleren?</h4>
+              <p className="text-sm text-on-surface-variant font-medium leading-relaxed">
+                Ja, je kunt je abonnement op elk moment opzeggen via je dashboard. Je behoudt toegang tot de betaalde
+                functies tot het einde van je huidige factureringscyclus.
+              </p>
+            </div>
+            <div className="p-6 rounded-lg bg-surface-container-low">
+              <h4 className="font-bold text-on-surface mb-3">Bieden jullie korting voor jaarlijkse betaling?</h4>
+              <p className="text-sm text-on-surface-variant font-medium leading-relaxed">
+                Ja. Bij jaarlijkse betaling geven we een gunstiger tarief in vergelijking met maandelijkse betaling.
+              </p>
+            </div>
+            <div className="p-6 rounded-lg bg-surface-container-low">
+              <h4 className="font-bold text-on-surface mb-3">Zijn mijn data en privacy veilig?</h4>
+              <p className="text-sm text-on-surface-variant font-medium leading-relaxed">
+                Privacy staat centraal. We werken tenant-gescheiden met beveiligde opslag en rollen per account.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="max-w-7xl mx-auto px-6">
+          <div className="relative overflow-hidden rounded-xl bg-primary-fixed p-12 md:p-20 flex flex-col items-center text-center">
+            <div className="absolute inset-0 opacity-10 pointer-events-none">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-primary rounded-full blur-[120px]"></div>
+              <div className="absolute bottom-0 left-0 w-96 h-96 bg-secondary-container rounded-full blur-[120px]"></div>
+            </div>
+            <h2 className="text-4xl font-extrabold tracking-tight text-on-primary-fixed mb-6 relative z-10 font-headline">
+              Klaar om de toekomst te versnellen?
+            </h2>
+            <p className="text-on-primary-fixed-variant text-lg mb-10 max-w-xl relative z-10">
+              Word lid van bedrijven die Belliq gebruiken om hun klantgesprekken slimmer en rustiger te maken.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 relative z-10">
+              <button
+                onClick={() => navigate('/login')}
+                className="bg-primary text-on-primary px-10 py-4 rounded-lg font-bold text-lg hover:scale-[1.05] transition-transform duration-300"
+              >
+                Nu aan de slag
+              </button>
+              <button
+                onClick={() => navigate('/contact')}
+                className="bg-surface-container-lowest text-on-surface px-10 py-4 rounded-lg font-bold text-lg hover:bg-surface-container-low transition-colors"
+              >
+                Plan een demo
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
 
       <PublicFooter />
     </div>
