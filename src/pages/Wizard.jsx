@@ -206,17 +206,17 @@ const Wizard = () => {
     setAssistantState(payload);
 
     setAssistantConfig({
-      companyName: payload?.profile?.company_name || payload?.assistant?.display_name || form.companyName,
+      companyName: payload?.profile?.company_name || payload?.assistant?.display_name || 'Mijn Bedrijf',
       voice: payload?.voice?.display_name || 'Niet gekozen',
-      voiceKey: payload?.voice?.voice_key || form.voiceKey,
-      phoneNumber: payload?.number?.e164 || form.numberE164 || 'Nog niet gekozen',
+      voiceKey: payload?.voice?.voice_key || '',
+      phoneNumber: payload?.number?.e164 || 'Nog niet gekozen',
       assistantId: payload?.assistant?.id,
       liveStatus: payload?.assistant?.live_status,
       billingStatus: payload?.assistant?.billing_status
     });
 
     return payload;
-  }, [authFetch, form.companyName, form.numberE164, form.voiceKey, setAssistantConfig, setIsAdmin]);
+  }, [authFetch, setAssistantConfig, setIsAdmin]);
 
   const loadInitialData = useCallback(async () => {
     setLoading(true);
