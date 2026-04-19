@@ -148,7 +148,7 @@ const PrivacyPage = () => {
         </section>
       </main>
 
-      <PublicFooter />
+      <PublicFooter variant="resources" />
     </div>
   );
 };

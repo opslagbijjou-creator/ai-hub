@@ -171,7 +171,7 @@ const CompliancePage = () => {
         </section>
       </main>
 
-      <PublicFooter />
+      <PublicFooter variant="resources" />
     </div>
   );
 };

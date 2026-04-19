@@ -20,6 +20,17 @@
   background: #f7f9fb;
   color: #191c1e;
   overflow-x: hidden;
+  font-family: 'Inter', sans-serif;
+}
+
+.belliq-page h1,
+.belliq-page h2,
+.belliq-page h3,
+.belliq-page h4,
+.belliq-page h5,
+.belliq-page h6,
+.belliq-page .font-headline {
+  font-family: 'Manrope', sans-serif;
 }
 
 .belliq-main {
@@ -27,6 +38,22 @@
   padding-top: 8rem;
   padding-bottom: 6rem;
   overflow-x: hidden;
+}
+
+.belliq-page button,
+.belliq-page a {
+  transition: all 0.2s ease;
+}
+
+.belliq-page button:focus-visible,
+.belliq-page a:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.belliq-page img {
+  max-width: 100%;
+  display: block;
 }
 
 .belliq-footer {

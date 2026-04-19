@@ -106,7 +106,7 @@ const TermsPage = () => {
         </section>
       </main>
 
-      <PublicFooter />
+      <PublicFooter variant="resources" />
     </div>
   );
 };
